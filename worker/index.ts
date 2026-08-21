@@ -1,7 +1,4 @@
-interface Env {
-  ASSETS: Fetcher;
-  DB: D1Database;
-}
+type WorkerEnv = Cloudflare.Env & { ASSETS: Fetcher };
 
 type Access = "read" | "edit";
 
@@ -15,9 +12,20 @@ type LinkItem = {
 const jsonHeaders = {
   "content-type": "application/json; charset=utf-8",
   "cache-control": "no-store",
+  "referrer-policy": "no-referrer",
+  "x-content-type-options": "nosniff",
+};
+const safeNoBodyHeaders = {
+  "cache-control": "no-store",
+  "referrer-policy": "no-referrer",
+  "x-content-type-options": "nosniff",
 };
 
 const readPagePath = /^\/read(?:\/|$)/;
+const bearerPagePath = /^\/(?:read|edit)(?:\/|$)/;
+const turnstileSiteverifyUrl =
+  "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+const turnstileAction = "create-page";
 
 const tokenEncoder = new TextEncoder();
 
@@ -34,6 +42,96 @@ function notFoundResponse() {
 
 function methodNotAllowedResponse() {
   return jsonResponse({ error: "Method not allowed" }, 405);
+}
+
+function rateLimitedResponse() {
+  return jsonResponse({ error: "Too many requests" }, 429);
+}
+
+function unavailableResponse() {
+  return jsonResponse({ error: "Service temporarily unavailable" }, 503);
+}
+
+function clientKey(request: Request) {
+  return request.headers.get("CF-Connecting-IP") ?? "unknown-client";
+}
+
+async function allowRequest(
+  limiter: RateLimit | undefined,
+  key: string,
+) {
+  if (!limiter) {
+    return "unavailable" as const;
+  }
+
+  try {
+    return (await limiter.limit({ key })).success
+      ? ("allowed" as const)
+      : ("limited" as const);
+  } catch {
+    return "unavailable" as const;
+  }
+}
+
+function configuredHostnames(env: WorkerEnv) {
+  return new Set(
+    (env.TURNSTILE_HOSTNAMES ?? "")
+      .split(",")
+      .map((hostname) => hostname.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+async function verifyTurnstile(request: Request, env: WorkerEnv) {
+  const token = request.headers.get("cf-turnstile-response");
+  const expectedHostnames = configuredHostnames(env);
+
+  if (
+    !env.TURNSTILE_SECRET ||
+    !token ||
+    token.length > 2048 ||
+    expectedHostnames.size === 0
+  ) {
+    return false;
+  }
+
+  const form = new URLSearchParams({
+    secret: env.TURNSTILE_SECRET,
+    response: token,
+  });
+  const remoteIp = request.headers.get("CF-Connecting-IP");
+
+  if (remoteIp) {
+    form.set("remoteip", remoteIp);
+  }
+
+  try {
+    const response = await fetch(turnstileSiteverifyUrl, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: form,
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    if (!response.ok) {
+      return false;
+    }
+
+    const result = (await response.json()) as {
+      success?: unknown;
+      action?: unknown;
+      hostname?: unknown;
+    };
+
+    return (
+      result.success === true &&
+      result.action === turnstileAction &&
+      typeof result.hostname === "string" &&
+      expectedHostnames.has(result.hostname.toLowerCase())
+    );
+  } catch {
+    return false;
+  }
 }
 
 function encodeToken(bytes: Uint8Array) {
@@ -66,7 +164,22 @@ async function hashToken(token: string) {
   ).join("");
 }
 
-async function createPage(request: Request, env: Env) {
+async function createPage(request: Request, env: WorkerEnv) {
+  const rateLimit = await allowRequest(
+    env.CREATE_RATE_LIMITER,
+    `create:${clientKey(request)}`,
+  );
+
+  if (rateLimit !== "allowed") {
+    return rateLimit === "limited"
+      ? rateLimitedResponse()
+      : unavailableResponse();
+  }
+
+  if (!(await verifyTurnstile(request, env))) {
+    return jsonResponse({ error: "Page could not be created" }, 403);
+  }
+
   const readToken = createToken();
   const editToken = createToken();
   const [readTokenHash, editTokenHash] = await Promise.all([
@@ -97,7 +210,7 @@ async function createPage(request: Request, env: Env) {
   );
 }
 
-async function findPageId(env: Env, access: Access, token: string) {
+async function findPageId(env: WorkerEnv, access: Access, token: string) {
   if (!/^[A-Za-z0-9_-]{43}$/.test(token)) {
     return null;
   }
@@ -113,7 +226,7 @@ async function findPageId(env: Env, access: Access, token: string) {
   return page?.id ?? null;
 }
 
-async function getPage(request: Request, env: Env, access: Access, token: string) {
+async function getPage(request: Request, env: WorkerEnv, access: Access, token: string) {
   const pageId = await findPageId(env, access, token);
 
   if (!pageId) {
@@ -133,6 +246,24 @@ async function getPage(request: Request, env: Env, access: Access, token: string
     access,
     linkItems: items.results,
   });
+}
+
+async function editApiRateLimitFailure(
+  request: Request,
+  env: WorkerEnv,
+) {
+  const rateLimit = await allowRequest(
+    env.EDIT_API_RATE_LIMITER,
+    `edit-api:${clientKey(request)}`,
+  );
+
+  if (rateLimit === "allowed") {
+    return null;
+  }
+
+  return rateLimit === "limited"
+    ? rateLimitedResponse()
+    : unavailableResponse();
 }
 
 function validateLinkItem(title: unknown, destinationUrl: unknown) {
@@ -175,7 +306,7 @@ function invalidLinkItemResponse() {
   );
 }
 
-async function createLinkItem(request: Request, env: Env, token: string) {
+async function createLinkItem(request: Request, env: WorkerEnv, token: string) {
   const pageId = await findPageId(env, "edit", token);
   const body = await parseJson(request);
 
@@ -221,7 +352,7 @@ async function createLinkItem(request: Request, env: Env, token: string) {
 
 async function updateLinkItem(
   request: Request,
-  env: Env,
+  env: WorkerEnv,
   token: string,
   itemId: string,
 ) {
@@ -274,7 +405,7 @@ async function updateLinkItem(
   return jsonResponse({ linkItem });
 }
 
-async function deleteLinkItem(env: Env, token: string, itemId: string) {
+async function deleteLinkItem(env: WorkerEnv, token: string, itemId: string) {
   const pageId = await findPageId(env, "edit", token);
 
   if (!pageId) {
@@ -289,10 +420,10 @@ async function deleteLinkItem(env: Env, token: string, itemId: string) {
 
   return result.meta.changes === 0
     ? notFoundResponse()
-    : new Response(null, { status: 204 });
+    : new Response(null, { status: 204, headers: safeNoBodyHeaders });
 }
 
-async function reorderLinkItems(request: Request, env: Env, token: string) {
+async function reorderLinkItems(request: Request, env: WorkerEnv, token: string) {
   const pageId = await findPageId(env, "edit", token);
 
   if (!pageId) {
@@ -338,15 +469,27 @@ async function reorderLinkItems(request: Request, env: Env, token: string) {
   return jsonResponse({ success: true });
 }
 
-async function serveAssets(request: Request, env: Env, url: URL) {
+async function serveAssets(request: Request, env: WorkerEnv, url: URL) {
   const response = await env.ASSETS.fetch(request);
+  const headers = new Headers(response.headers);
 
-  if (!readPagePath.test(url.pathname)) {
-    return response;
+  headers.set("referrer-policy", "no-referrer");
+  headers.set("x-content-type-options", "nosniff");
+  headers.set("x-frame-options", "DENY");
+  headers.set(
+    "content-security-policy",
+    "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; " +
+      "frame-src https://challenges.cloudflare.com; connect-src 'self' https://challenges.cloudflare.com; " +
+      "style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'",
+  );
+
+  if (bearerPagePath.test(url.pathname)) {
+    headers.set("cache-control", "no-store");
   }
 
-  const headers = new Headers(response.headers);
-  headers.set("X-Robots-Tag", "noindex, nofollow");
+  if (readPagePath.test(url.pathname)) {
+    headers.set("X-Robots-Tag", "noindex, nofollow");
+  }
 
   return new Response(response.body, {
     headers,
@@ -355,12 +498,18 @@ async function serveAssets(request: Request, env: Env, url: URL) {
   });
 }
 
-const worker: ExportedHandler<Env> = {
+const worker: ExportedHandler<WorkerEnv> = {
   async fetch(request, env) {
     const url = new URL(request.url);
 
     if (url.pathname === "/api/health") {
       return jsonResponse({ status: "ok" });
+    }
+
+    if (url.pathname === "/api/config") {
+      return request.method === "GET"
+        ? jsonResponse({ turnstileSiteKey: env.TURNSTILE_SITE_KEY ?? null })
+        : methodNotAllowedResponse();
     }
 
     if (url.pathname === "/api/pages") {
@@ -376,6 +525,14 @@ const worker: ExportedHandler<Env> = {
       const token = pageRoute[2];
 
       if (request.method === "GET") {
+        if (access === "edit") {
+          const failure = await editApiRateLimitFailure(request, env);
+
+          if (failure) {
+            return failure;
+          }
+        }
+
         return getPage(request, env, access, token);
       }
 
@@ -387,9 +544,13 @@ const worker: ExportedHandler<Env> = {
     );
 
     if (reorderRoute) {
-      return request.method === "PATCH"
-        ? reorderLinkItems(request, env, reorderRoute[1])
-        : methodNotAllowedResponse();
+      if (request.method !== "PATCH") {
+        return methodNotAllowedResponse();
+      }
+
+      const failure = await editApiRateLimitFailure(request, env);
+
+      return failure ?? reorderLinkItems(request, env, reorderRoute[1]);
     }
 
     const itemRoute = url.pathname.match(
@@ -401,15 +562,21 @@ const worker: ExportedHandler<Env> = {
       const itemId = itemRoute[2];
 
       if (request.method === "POST" && !itemId) {
-        return createLinkItem(request, env, token);
+        const failure = await editApiRateLimitFailure(request, env);
+
+        return failure ?? createLinkItem(request, env, token);
       }
 
       if (request.method === "PATCH" && itemId) {
-        return updateLinkItem(request, env, token, itemId);
+        const failure = await editApiRateLimitFailure(request, env);
+
+        return failure ?? updateLinkItem(request, env, token, itemId);
       }
 
       if (request.method === "DELETE" && itemId) {
-        return deleteLinkItem(env, token, itemId);
+        const failure = await editApiRateLimitFailure(request, env);
+
+        return failure ?? deleteLinkItem(env, token, itemId);
       }
 
       return methodNotAllowedResponse();

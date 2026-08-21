@@ -3,6 +3,29 @@
   "name": "family-board-test",
   "main": "worker/index.ts",
   "compatibility_date": "2026-08-19",
+  "vars": {
+    "TURNSTILE_SECRET": "1x0000000000000000000000000000000AA",
+    "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
+    "TURNSTILE_HOSTNAMES": "family-board.test"
+  },
+  "ratelimits": [
+    {
+      "name": "CREATE_RATE_LIMITER",
+      "namespace_id": "2001",
+      "simple": {
+        "limit": 1000,
+        "period": 60
+      }
+    },
+    {
+      "name": "EDIT_API_RATE_LIMITER",
+      "namespace_id": "2002",
+      "simple": {
+        "limit": 1000,
+        "period": 60
+      }
+    }
+  ],
   "assets": {
     "directory": "./public",
     "not_found_handling": "single-page-application"

@@ -126,6 +126,11 @@ button {
   line-height: 1.7;
 }
 
+.turnstile-widget {
+  min-height: 65px;
+  margin-top: 20px;
+}
+
 .primary-button {
   padding: 12px 20px;
   border: 0;

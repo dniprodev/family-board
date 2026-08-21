@@ -68,6 +68,12 @@ mutation endpoints.
 The Worker stores only SHA-256 hashes of the bearer tokens. Do not paste Read
 or Edit links into logs, diagnostics, or issue comments.
 
+Page creation is protected by server-side Cloudflare Turnstile validation and
+Cloudflare Workers Rate Limiting. Read-link access does not require a challenge.
+The checked-in edge behavior, production widget setup, rate limits, crawler
+posture, no-store headers, and bearer-link security boundary are documented in
+[docs/cloudflare-edge-hardening.md](docs/cloudflare-edge-hardening.md).
+
 To preview the production build in the Workers runtime, use:
 
 ```sh

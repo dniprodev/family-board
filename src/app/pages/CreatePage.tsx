@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LinkRow } from "../components/LinkRow";
 import { SiteHeader } from "../components/SiteHeader";
+import { TurnstileWidget } from "../components/TurnstileWidget";
 import type { PageLinks } from "../types";
 
 type CreateStatus = "idle" | "creating" | "error";
@@ -8,12 +9,44 @@ type CreateStatus = "idle" | "creating" | "error";
 export function CreatePage() {
   const [links, setLinks] = useState<PageLinks | null>(null);
   const [status, setStatus] = useState<CreateStatus>("idle");
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [turnstileFailed, setTurnstileFailed] = useState(false);
+  const [resetSignal, setResetSignal] = useState(0);
+
+  useEffect(() => {
+    void fetch("/api/config")
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("Configuration could not be loaded");
+        }
+
+        const config = (await response.json()) as {
+          turnstileSiteKey?: unknown;
+        };
+        const siteKey = config.turnstileSiteKey;
+
+        if (typeof siteKey !== "string" || !siteKey) {
+          throw new Error("Challenge configuration is unavailable");
+        }
+
+        setTurnstileSiteKey(siteKey);
+      })
+      .catch(() => setTurnstileFailed(true));
+  }, []);
 
   async function handleCreate() {
+    if (!turnstileToken) {
+      return;
+    }
+
     setStatus("creating");
 
     try {
-      const response = await fetch("/api/pages", { method: "POST" });
+      const response = await fetch("/api/pages", {
+        method: "POST",
+        headers: { "cf-turnstile-response": turnstileToken },
+      });
 
       if (!response.ok) {
         throw new Error("Page creation failed");
@@ -23,6 +56,8 @@ export function CreatePage() {
       setStatus("idle");
     } catch {
       setStatus("error");
+    } finally {
+      setResetSignal((signal) => signal + 1);
     }
   }
 
@@ -51,13 +86,36 @@ export function CreatePage() {
             </div>
             <button
               className="primary-button"
-              disabled={status === "creating"}
+              disabled={status === "creating" || !turnstileToken || turnstileFailed}
               onClick={handleCreate}
               type="button"
             >
               {status === "creating" ? "Creating…" : "Create Page"}
             </button>
           </div>
+
+          {turnstileSiteKey && (
+            <div className="turnstile-widget">
+              <TurnstileWidget
+                onError={() => {
+                  setTurnstileFailed(true);
+                  setTurnstileToken(null);
+                }}
+                onToken={(token) => {
+                  setTurnstileFailed(false);
+                  setTurnstileToken(token);
+                }}
+                resetSignal={resetSignal}
+                siteKey={turnstileSiteKey}
+              />
+            </div>
+          )}
+
+          {turnstileFailed && (
+            <p className="error-message" role="alert">
+              Verification is unavailable. Please try again later.
+            </p>
+          )}
 
           {status === "error" && (
             <p className="error-message" role="alert">

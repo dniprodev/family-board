@@ -1,7 +1,7 @@
 import { exports } from "cloudflare:workers";
 import { env } from "cloudflare:workers";
 import { reset } from "cloudflare:test";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import initialMigration from "../migrations/0001_initial.sql?raw";
 
 type PageLinks = {
@@ -16,7 +16,10 @@ async function request(path: string, init?: RequestInit) {
 }
 
 async function createPage(): Promise<PageLinks> {
-  const response = await request("/api/pages", { method: "POST" });
+  const response = await request("/api/pages", {
+    method: "POST",
+    headers: { "cf-turnstile-response": "valid-test-token" },
+  });
 
   expect(response.status).toBe(201);
   expect(response.headers.get("content-type")).toContain("application/json");
@@ -32,10 +35,88 @@ describe("application boundary", () => {
       .filter(Boolean)) {
       await env.DB.prepare(statement).run();
     }
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (input.toString() !== "https://challenges.cloudflare.com/turnstile/v0/siteverify") {
+          throw new Error("unexpected external request");
+        }
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            action: "create-page",
+            hostname: "family-board.test",
+          }),
+          { headers: { "content-type": "application/json" } },
+        );
+      }),
+    );
   });
 
   afterEach(async () => {
+    vi.unstubAllGlobals();
     await reset();
+  });
+
+  it("rejects Page creation without a valid Turnstile challenge", async () => {
+    const response = await request("/api/pages", { method: "POST" });
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: "Page could not be created",
+    });
+  });
+
+  it("rejects a Turnstile response with the wrong action or hostname", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            success: true,
+            action: "wrong-action",
+            hostname: "unexpected.example",
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+
+    const response = await request("/api/pages", {
+      method: "POST",
+      headers: { "cf-turnstile-response": "invalid-test-token" },
+    });
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: "Page could not be created",
+    });
+  });
+
+  it("rejects an expired or replayed Turnstile response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            success: false,
+            "error-codes": ["timeout-or-duplicate"],
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+
+    const token = "expired-test-token";
+    const response = await request("/api/pages", {
+      method: "POST",
+      headers: { "cf-turnstile-response": token },
+    });
+
+    expect(response.status).toBe(403);
+    expect(await response.text()).not.toContain(token);
   });
 
   it("reports a healthy Worker without requiring bearer-link access", async () => {
@@ -46,6 +127,29 @@ describe("application boundary", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("application/json");
     expect(await response.json()).toEqual({ status: "ok" });
+  });
+
+  it("exposes only the public challenge configuration", async () => {
+    const response = await request("/api/config");
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+
+    expect(body).toEqual({
+      turnstileSiteKey: "1x00000000000000000000AA",
+    });
+    expect(JSON.stringify(body)).not.toContain(
+      "1x0000000000000000000000000000000AA",
+    );
+  });
+
+  it("protects Edit-link application responses from caching and referrers", async () => {
+    const response = await exports.default.fetch(
+      new Request(`https://family-board.test/edit/${"a".repeat(43)}`),
+    );
+
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
   });
 
   it("creates a Page with separate unguessable Read and Edit links", async () => {
@@ -59,7 +163,7 @@ describe("application boundary", () => {
     expect(links.readLink).not.toContain(links.editLink);
   });
 
-  it("shows an empty Page through its Read link", async () => {
+  it("shows an empty Page through its Read link without a challenge", async () => {
     const links = await createPage();
     const readToken = new URL(links.readLink).pathname.split("/").pop();
 
@@ -70,6 +174,8 @@ describe("application boundary", () => {
       access: "read",
       linkItems: [],
     });
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
   });
 
   it("recognizes the separate Edit link without exposing it as Read access", async () => {
@@ -166,6 +272,8 @@ describe("application boundary", () => {
       { method: "DELETE" },
     );
     expect(deletion.status).toBe(204);
+    expect(deletion.headers.get("cache-control")).toBe("no-store");
+    expect(deletion.headers.get("referrer-policy")).toBe("no-referrer");
 
     const edit = await request(`/api/edit/${editToken}`);
     expect((await edit.json()).linkItems).toHaveLength(1);
