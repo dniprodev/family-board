@@ -5,8 +5,8 @@
   "compatibility_date": "2026-08-19",
   "workers_dev": true,
   "vars": {
-    "TURNSTILE_SITE_KEY": "",
-    "TURNSTILE_HOSTNAMES": ""
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAEXbB2Vo8eI8fGmP",
+    "TURNSTILE_HOSTNAMES": "family-board.family-board.workers.dev"
   },
   "secrets": {
     "required": ["TURNSTILE_SECRET"]
