@@ -63,18 +63,19 @@ implemented.
 ## D1 and deployment
 
 The checked-in `wrangler.jsonc` defines the `DB` binding, migration directory,
-and `workers_dev: true` deployment target. The database ID is not a credential,
-but the committed value is a safe placeholder until a maintainer creates the
-production database. Complete the one-time Cloudflare account steps with:
+and `workers_dev: true` deployment target. The D1 database ID is an identifier,
+not a credential, so it can be committed. On a new account, complete the
+one-time Cloudflare account step with:
 
 ```sh
 npx wrangler login
 npx wrangler d1 create family-board
 ```
 
-Copy the returned database ID into `wrangler.jsonc` as `database_id`. Do not
-commit API tokens, `.dev.vars*`, or other secrets. Apply the production schema
-and deploy the Worker and built frontend:
+If Wrangler does not update `wrangler.jsonc` automatically, copy the returned
+database ID into the `database_id` field. Do not commit API tokens,
+`.dev.vars*`, or other secrets. Apply the production schema and deploy the
+Worker and built frontend:
 
 ```sh
 npm run db:migrate:remote
