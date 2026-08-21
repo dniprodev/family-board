@@ -182,7 +182,11 @@ export async function runProductionSmokeTest({
     );
     const manifest = await readJson(manifestResponse, "PWA manifest");
     assert(
-      manifest?.display === "standalone" &&
+      manifest?.id === "/" &&
+        manifest?.start_url === "/" &&
+        manifest?.scope === "/" &&
+        manifest?.launch_handler?.client_mode === "navigate-existing" &&
+        manifest?.display === "standalone" &&
         Array.isArray(manifest.icons) &&
         manifest.icons.length >= 2,
       "PWA manifest is incomplete",

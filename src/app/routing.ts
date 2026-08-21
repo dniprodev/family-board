@@ -3,8 +3,14 @@ export type Route =
   | { kind: "page"; access: "read" | "edit"; token: string }
   | { kind: "not-found" };
 
+const pagePathPattern = /^\/(read|edit)\/([^/]+)$/;
+
+export function isPagePath(path: string) {
+  return pagePathPattern.test(path);
+}
+
 export function getRoute(): Route {
-  const match = window.location.pathname.match(/^\/(read|edit)\/([^/]+)$/);
+  const match = window.location.pathname.match(pagePathPattern);
 
   if (!match) {
     return window.location.pathname === "/"

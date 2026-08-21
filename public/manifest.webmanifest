@@ -2,8 +2,12 @@
   "name": "Family Board",
   "short_name": "Family Board",
   "description": "A private, shared page of useful links.",
+  "id": "/",
   "start_url": "/",
   "scope": "/",
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  },
   "display": "standalone",
   "background_color": "#f4f0e8",
   "theme_color": "#f4f0e8",

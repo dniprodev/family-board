@@ -1,4 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  clearSavedLaunchPage,
+  getSavedLaunchPage,
+  saveLaunchPage,
+} from "../launch-page";
 import { LinkRow } from "../components/LinkRow";
 import { SiteHeader } from "../components/SiteHeader";
 import type { PageResponse } from "../types";
@@ -29,12 +34,16 @@ function isSavable(item: { title: string; destinationUrl: string }) {
 }
 
 export function PageView({ access, token }: PageViewProps) {
+  const pagePath = window.location.pathname;
   const [page, setPage] = useState<PageResponse | null>(null);
   const [activeToken, setActiveToken] = useState(token);
   const [failed, setFailed] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [rotationState, setRotationState] = useState<RotationState>("idle");
   const [rotatedEditLink, setRotatedEditLink] = useState<string | null>(null);
+  const [isSavedLaunchPage, setIsSavedLaunchPage] = useState(
+    () => getSavedLaunchPage() === pagePath,
+  );
   const activeTokenRef = useRef(token);
   const pageRef = useRef<PageResponse | null>(null);
   const saveTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
@@ -484,7 +493,11 @@ export function PageView({ access, token }: PageViewProps) {
         throw new Error("Edit link could not be rotated");
       }
 
+      const shouldUpdateSavedLaunchPage = getSavedLaunchPage() === pagePath;
       window.history.replaceState(null, "", newEditUrl.pathname);
+      if (shouldUpdateSavedLaunchPage) {
+        saveLaunchPage(newEditUrl.pathname);
+      }
       activeTokenRef.current = newToken;
       setActiveToken(newToken);
       setRotatedEditLink(result.editLink);
@@ -502,6 +515,31 @@ export function PageView({ access, token }: PageViewProps) {
         <section className="page-content">
           <p className="eyebrow">{access === "read" ? "Read link" : "Edit link"}</p>
           <h1 className="page-title">Family Board</h1>
+
+          <section className="launch-page-panel" aria-label="App launch Page">
+            <div>
+              <h2 className="editor-panel-title">App launch Page</h2>
+              <p className="editor-panel-description">
+                Save this Page on this device and open it when Family Board starts.
+              </p>
+            </div>
+            <button
+              className="secondary-button"
+              onClick={() => {
+                if (isSavedLaunchPage) {
+                  clearSavedLaunchPage();
+                  setIsSavedLaunchPage(false);
+                  return;
+                }
+
+                saveLaunchPage(window.location.pathname);
+                setIsSavedLaunchPage(true);
+              }}
+              type="button"
+            >
+              {isSavedLaunchPage ? "Clear saved Page" : "Use this Page on launch"}
+            </button>
+          </section>
 
           {!page && !failed && <p className="loading-message">Loading Page…</p>}
 

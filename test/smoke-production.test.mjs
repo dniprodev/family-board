@@ -50,6 +50,10 @@ describe("production smoke test", () => {
 
       if (url.pathname === "/manifest.webmanifest") {
         return response({
+          id: "/",
+          start_url: "/",
+          scope: "/",
+          launch_handler: { client_mode: "navigate-existing" },
           display: "standalone",
           icons: [
             { src: "/icons/family-board-192.png" },
