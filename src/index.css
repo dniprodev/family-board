@@ -438,6 +438,23 @@ button {
   background: #edf3ed;
 }
 
+.secondary-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.editor-access-panel {
+  display: grid;
+  gap: 12px;
+  padding-top: 20px;
+  border-top: 1px solid #d8d1c5;
+}
+
+.editor-access-result {
+  display: grid;
+  gap: 12px;
+}
+
 .inline-button {
   padding: 0;
   border: 0;

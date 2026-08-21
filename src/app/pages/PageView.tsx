@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { LinkRow } from "../components/LinkRow";
 import { SiteHeader } from "../components/SiteHeader";
 import type { PageResponse } from "../types";
 
@@ -8,6 +9,7 @@ type PageViewProps = {
 };
 
 type SaveState = "saved" | "saving" | "error";
+type RotationState = "idle" | "rotating" | "error";
 
 type SaveEntry = {
   run: () => Promise<void>;
@@ -28,8 +30,11 @@ function isSavable(item: { title: string; destinationUrl: string }) {
 
 export function PageView({ access, token }: PageViewProps) {
   const [page, setPage] = useState<PageResponse | null>(null);
+  const [activeToken, setActiveToken] = useState(token);
   const [failed, setFailed] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("saved");
+  const [rotationState, setRotationState] = useState<RotationState>("idle");
+  const [rotatedEditLink, setRotatedEditLink] = useState<string | null>(null);
   const pageRef = useRef<PageResponse | null>(null);
   const saveTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const pendingSaves = useRef(new Map<string, SaveEntry>());
@@ -37,6 +42,10 @@ export function PageView({ access, token }: PageViewProps) {
   const saveChains = useRef(new Map<string, Promise<void>>());
 
   pageRef.current = page;
+
+  useEffect(() => {
+    setActiveToken(token);
+  }, [token]);
 
   function queueSave(key: string, run: () => Promise<void>) {
     const entry = { run };
@@ -121,7 +130,7 @@ export function PageView({ access, token }: PageViewProps) {
   useEffect(() => {
     const controller = new AbortController();
 
-    fetch(`/api/${access}/${encodeURIComponent(token)}`, {
+    fetch(`/api/${access}/${encodeURIComponent(activeToken)}`, {
       signal: controller.signal,
     })
       .then(async (response) => {
@@ -141,7 +150,7 @@ export function PageView({ access, token }: PageViewProps) {
       });
 
     return () => controller.abort();
-  }, [access, token]);
+  }, [access, activeToken]);
 
   useEffect(() => {
     return () => {
@@ -172,7 +181,7 @@ export function PageView({ access, token }: PageViewProps) {
       return;
     }
 
-    const itemPath = `/api/edit/${encodeURIComponent(token)}/items`;
+    const itemPath = `/api/edit/${encodeURIComponent(activeToken)}/items`;
 
     if (itemId.startsWith("draft-")) {
       queueSave(itemId, async () => {
@@ -369,7 +378,7 @@ export function PageView({ access, token }: PageViewProps) {
 
       try {
         response = await fetch(
-          `/api/edit/${encodeURIComponent(token)}/items/${encodeURIComponent(itemId)}`,
+          `/api/edit/${encodeURIComponent(activeToken)}/items/${encodeURIComponent(itemId)}`,
           { method: "DELETE" },
         );
       } catch (error) {
@@ -415,7 +424,7 @@ export function PageView({ access, token }: PageViewProps) {
       }
 
       const response = await fetch(
-        `/api/edit/${encodeURIComponent(token)}/items/reorder`,
+        `/api/edit/${encodeURIComponent(activeToken)}/items/reorder`,
         {
           method: "PATCH",
           headers: { "content-type": "application/json" },
@@ -427,6 +436,43 @@ export function PageView({ access, token }: PageViewProps) {
         throw new Error("Link item order could not be saved");
       }
     });
+  }
+
+  async function rotateEditLink() {
+    setRotationState("rotating");
+
+    try {
+      const response = await fetch(
+        `/api/edit/${encodeURIComponent(activeToken)}/rotate`,
+        { method: "POST" },
+      );
+
+      if (!response.ok) {
+        throw new Error("Edit link could not be rotated");
+      }
+
+      const result = (await response.json()) as { editLink?: unknown };
+
+      if (typeof result.editLink !== "string") {
+        throw new Error("Edit link could not be rotated");
+      }
+
+      const newEditUrl = new URL(result.editLink);
+      const newToken = newEditUrl.pathname.match(
+        /^\/edit\/([A-Za-z0-9_-]{43})$/,
+      )?.[1];
+
+      if (!newToken) {
+        throw new Error("Edit link could not be rotated");
+      }
+
+      window.history.replaceState(null, "", newEditUrl.pathname);
+      setActiveToken(newToken);
+      setRotatedEditLink(result.editLink);
+      setRotationState("idle");
+    } catch {
+      setRotationState("error");
+    }
   }
 
   return (
@@ -506,6 +552,38 @@ export function PageView({ access, token }: PageViewProps) {
               <button className="secondary-button" onClick={addDraft} type="button">
                 Add Link item
               </button>
+
+              <section className="editor-access-panel" aria-label="Edit link access">
+                <div>
+                  <h2 className="editor-panel-title">Edit link access</h2>
+                  <p className="editor-panel-description">
+                    Rotate the Edit link if you no longer want the current link to
+                    grant access.
+                  </p>
+                </div>
+                <button
+                  className="secondary-button"
+                  disabled={rotationState === "rotating"}
+                  onClick={() => void rotateEditLink()}
+                  type="button"
+                >
+                  {rotationState === "rotating" ? "Rotating…" : "Rotate Edit link"}
+                </button>
+                {rotationState === "error" && (
+                  <div className="error-panel" role="alert">
+                    The Edit link could not be rotated. Check your connection and
+                    try again.
+                  </div>
+                )}
+                {rotatedEditLink && (
+                  <div className="editor-access-result">
+                    <p className="editor-panel-description">
+                      Save this new Edit link. The previous link no longer works.
+                    </p>
+                    <LinkRow label="New Edit link" link={rotatedEditLink} />
+                  </div>
+                )}
+              </section>
             </section>
           )}
 

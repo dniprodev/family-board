@@ -51,6 +51,8 @@ The application boundary for this slice is:
 - `GET /api/read/:token` returns the Page's Link items with `access: "read"`.
 - `GET /api/edit/:token` validates the separate Edit link and returns the Page
   with `access: "edit"`.
+- `POST /api/edit/:token/rotate` replaces a valid Edit link and returns its new
+  Edit link; the Read link remains valid.
 - `POST /api/edit/:token/items` creates a Link item from a title and absolute
   HTTP(S) destination URL.
 - `PATCH /api/edit/:token/items/:id` updates a Link item's title and/or
@@ -67,6 +69,10 @@ mutation endpoints.
 
 The Worker stores only SHA-256 hashes of the bearer tokens. Do not paste Read
 or Edit links into logs, diagnostics, or issue comments.
+
+The Editor can rotate its Edit link from the Edit page. Rotation replaces the
+stored Edit-link hash, so the previous Edit link immediately stops granting
+access while the Read link continues to work. Save the new link after rotating.
 
 Page creation is protected by server-side Cloudflare Turnstile validation and
 Cloudflare Workers Rate Limiting. Read-link access does not require a challenge.

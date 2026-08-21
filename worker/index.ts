@@ -29,10 +29,14 @@ const turnstileAction = "create-page";
 
 const tokenEncoder = new TextEncoder();
 
-function jsonResponse(body: unknown, status = 200) {
+function jsonResponse(
+  body: unknown,
+  status = 200,
+  extraHeaders: Record<string, string> = {},
+) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: jsonHeaders,
+    headers: { ...jsonHeaders, ...extraHeaders },
   });
 }
 
@@ -242,10 +246,14 @@ async function getPage(request: Request, env: WorkerEnv, access: Access, token: 
     .bind(pageId)
     .all<LinkItem>();
 
-  return jsonResponse({
-    access,
-    linkItems: items.results,
-  });
+  return jsonResponse(
+    {
+      access,
+      linkItems: items.results,
+    },
+    200,
+    access === "read" ? { "X-Robots-Tag": "noindex, nofollow" } : {},
+  );
 }
 
 async function editApiRateLimitFailure(
@@ -469,6 +477,30 @@ async function reorderLinkItems(request: Request, env: WorkerEnv, token: string)
   return jsonResponse({ success: true });
 }
 
+async function rotateEditLink(request: Request, env: WorkerEnv, token: string) {
+  const pageId = await findPageId(env, "edit", token);
+
+  if (!pageId) {
+    return notFoundResponse();
+  }
+
+  const editToken = createToken();
+  const editTokenHash = await hashToken(editToken);
+  const result = await env.DB.prepare(
+    "UPDATE pages SET edit_token_hash = ?1 WHERE id = ?2",
+  )
+    .bind(editTokenHash, pageId)
+    .run();
+
+  if (result.meta.changes === 0) {
+    return notFoundResponse();
+  }
+
+  return jsonResponse({
+    editLink: `${new URL(request.url).origin}/edit/${editToken}`,
+  });
+}
+
 async function serveAssets(request: Request, env: WorkerEnv, url: URL) {
   const response = await env.ASSETS.fetch(request);
   const headers = new Headers(response.headers);
@@ -551,6 +583,18 @@ const worker: ExportedHandler<WorkerEnv> = {
       const failure = await editApiRateLimitFailure(request, env);
 
       return failure ?? reorderLinkItems(request, env, reorderRoute[1]);
+    }
+
+    const rotateRoute = url.pathname.match(/^\/api\/edit\/([^/]+)\/rotate$/);
+
+    if (rotateRoute) {
+      if (request.method !== "POST") {
+        return methodNotAllowedResponse();
+      }
+
+      const failure = await editApiRateLimitFailure(request, env);
+
+      return failure ?? rotateEditLink(request, env, rotateRoute[1]);
     }
 
     const itemRoute = url.pathname.match(

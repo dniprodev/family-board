@@ -176,6 +176,7 @@ describe("application boundary", () => {
     });
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(response.headers.get("x-robots-tag")).toBe("noindex, nofollow");
   });
 
   it("recognizes the separate Edit link without exposing it as Read access", async () => {
@@ -196,11 +197,61 @@ describe("application boundary", () => {
     expect(editTokenWithReadRoute.status).toBe(404);
   });
 
-  it("does not reveal a Page for an unknown Read link", async () => {
-    const response = await request(`/api/read/${"a".repeat(43)}`);
+  it("rotates the Edit link while keeping the Read link working", async () => {
+    const links = await createPage();
+    const readToken = new URL(links.readLink).pathname.split("/").pop();
+    const oldEditToken = new URL(links.editLink).pathname.split("/").pop();
+
+    const rotation = await request(`/api/edit/${oldEditToken}/rotate`, {
+      method: "POST",
+    });
+
+    expect(rotation.status).toBe(200);
+    const rotatedLinks = (await rotation.json()) as { editLink: string };
+    const newEditToken = new URL(rotatedLinks.editLink).pathname.split("/").pop();
+
+    expect(rotatedLinks.editLink).toMatch(
+      /^https:\/\/family-board\.test\/edit\/[A-Za-z0-9_-]{43}$/,
+    );
+    expect(newEditToken).not.toBe(oldEditToken);
+    expect(JSON.stringify(rotatedLinks)).not.toContain(oldEditToken);
+
+    const oldEditResponse = await request(`/api/edit/${oldEditToken}`);
+    const newEditResponse = await request(`/api/edit/${newEditToken}`);
+    const readResponse = await request(`/api/read/${readToken}`);
+
+    expect(oldEditResponse.status).toBe(404);
+    expect(await oldEditResponse.json()).toEqual({ error: "Page not found" });
+    expect(newEditResponse.status).toBe(200);
+    expect(readResponse.status).toBe(200);
+  });
+
+  it("does not let a Read link or unknown credential rotate an Edit link", async () => {
+    const links = await createPage();
+    const readToken = new URL(links.readLink).pathname.split("/").pop();
+    const unknownToken = "a".repeat(43);
+
+    const readRotation = await request(`/api/edit/${readToken}/rotate`, {
+      method: "POST",
+    });
+    const unknownRotation = await request(`/api/edit/${unknownToken}/rotate`, {
+      method: "POST",
+    });
+
+    expect(readRotation.status).toBe(404);
+    expect(unknownRotation.status).toBe(404);
+    expect(await unknownRotation.text()).not.toContain(unknownToken);
+  });
+
+  it("does not reveal a Page for an unknown Read or Edit link", async () => {
+    const unknownToken = "a".repeat(43);
+    const response = await request(`/api/read/${unknownToken}`);
+    const editResponse = await request(`/api/edit/${unknownToken}`);
 
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({ error: "Page not found" });
+    expect(editResponse.status).toBe(404);
+    expect(await editResponse.text()).not.toContain(unknownToken);
   });
 
   it("lets an Editor create, edit, reorder, and delete Link items", async () => {

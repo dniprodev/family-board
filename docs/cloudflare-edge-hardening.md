@@ -18,6 +18,8 @@ but do not turn a bearer link into identity-based authorization.
 - API responses and credential-bearing `/read/` and `/edit/` application
   responses use `Cache-Control: no-store` and `Referrer-Policy: no-referrer`.
   Read responses also use `X-Robots-Tag: noindex, nofollow`.
+- `POST /api/edit/:token/rotate` replaces the stored Edit-link hash. The old
+  Edit link stops working immediately, while the Read link is unchanged.
 - `public/robots.txt` disallows crawler requests to Read and Edit URL paths.
   This is discovery reduction, not authorization.
 - Wrangler observability remains enabled as a configuration surface, but
