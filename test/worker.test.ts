@@ -96,4 +96,103 @@ describe("application boundary", () => {
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({ error: "Page not found" });
   });
+
+  it("lets an Editor create, edit, reorder, and delete Link items", async () => {
+    const links = await createPage();
+    const editToken = new URL(links.editLink).pathname.split("/").pop();
+    const readToken = new URL(links.readLink).pathname.split("/").pop();
+
+    const firstCreate = await request(`/api/edit/${editToken}/items`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        title: "Family calendar",
+        destinationUrl: "https://calendar.example.com",
+      }),
+    });
+    const secondCreate = await request(`/api/edit/${editToken}/items`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        title: "Grocery list",
+        destinationUrl: "https://groceries.example.com",
+      }),
+    });
+
+    expect(firstCreate.status).toBe(201);
+    expect(secondCreate.status).toBe(201);
+    const firstItem = (await firstCreate.json()).linkItem;
+    const secondItem = (await secondCreate.json()).linkItem;
+
+    const update = await request(
+      `/api/edit/${editToken}/items/${firstItem.id}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: "Updated calendar",
+          destinationUrl: "https://calendar.example.com/family",
+        }),
+      },
+    );
+    expect(update.status).toBe(200);
+
+    const reorder = await request(`/api/edit/${editToken}/items/reorder`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ itemIds: [secondItem.id, firstItem.id] }),
+    });
+    expect(reorder.status).toBe(200);
+
+    const read = await request(`/api/read/${readToken}`);
+    expect(read.status).toBe(200);
+    expect((await read.json()).linkItems).toMatchObject([
+      {
+        id: secondItem.id,
+        title: "Grocery list",
+        destinationUrl: "https://groceries.example.com",
+        position: 0,
+      },
+      {
+        id: firstItem.id,
+        title: "Updated calendar",
+        destinationUrl: "https://calendar.example.com/family",
+        position: 1,
+      },
+    ]);
+
+    const deletion = await request(
+      `/api/edit/${editToken}/items/${secondItem.id}`,
+      { method: "DELETE" },
+    );
+    expect(deletion.status).toBe(204);
+
+    const edit = await request(`/api/edit/${editToken}`);
+    expect((await edit.json()).linkItems).toHaveLength(1);
+  });
+
+  it("rejects invalid Link items and keeps the Read link read-only", async () => {
+    const links = await createPage();
+    const editToken = new URL(links.editLink).pathname.split("/").pop();
+    const readToken = new URL(links.readLink).pathname.split("/").pop();
+    const invalid = await request(`/api/edit/${editToken}/items`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "", destinationUrl: "javascript:alert(1)" }),
+    });
+    const readMutation = await request(`/api/read/${readToken}/items`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        title: "Nope",
+        destinationUrl: "https://example.com",
+      }),
+    });
+
+    expect(invalid.status).toBe(400);
+    expect(await invalid.json()).toEqual({
+      error: "Link item title and destination URL are required",
+    });
+    expect(readMutation.status).toBe(404);
+  });
 });

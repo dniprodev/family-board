@@ -42,8 +42,8 @@ The foundation health endpoint is `GET /api/health`.
 
 Open the root URL to create a Page. The response displays separate Read and
 Edit links; save the Edit link because it is the only account-free way to
-return as the Editor. A Read link opens an empty Page until Link items are
-added in the editor slice.
+return as the Editor. Open the Edit link to maintain Link items from a
+phone-friendly editor, or share the Read link for read-only access.
 
 The application boundary for this slice is:
 
@@ -51,6 +51,19 @@ The application boundary for this slice is:
 - `GET /api/read/:token` returns the Page's Link items with `access: "read"`.
 - `GET /api/edit/:token` validates the separate Edit link and returns the Page
   with `access: "edit"`.
+- `POST /api/edit/:token/items` creates a Link item from a title and absolute
+  HTTP(S) destination URL.
+- `PATCH /api/edit/:token/items/:id` updates a Link item's title and/or
+  destination URL.
+- `DELETE /api/edit/:token/items/:id` removes a Link item.
+- `PATCH /api/edit/:token/items/reorder` accepts the complete ordered list of
+  Link item IDs.
+
+The Edit view keeps drafts local until they contain a title and valid
+destination URL, then autosaves changes after a short debounce. It shows
+Saving, Saved, and Save failed states; failed requests keep the current local
+form state available for retry. Read-link requests cannot use the item
+mutation endpoints.
 
 The Worker stores only SHA-256 hashes of the bearer tokens. Do not paste Read
 or Edit links into logs, diagnostics, or issue comments.
@@ -72,8 +85,9 @@ npm run build
 
 Worker boundary tests run locally in the Cloudflare Workers runtime with
 isolated test storage. The suite exercises Page creation, separate bearer
-links, empty Read and Edit responses, unknown-link rejection, and the health
-endpoint through HTTP requests.
+links, empty Read and Edit responses, Link item creation/editing/reordering/
+deletion, invalid item rejection, unknown-link rejection, Read-link read-only
+behavior, and the health endpoint through HTTP requests.
 
 ## D1 and deployment
 
