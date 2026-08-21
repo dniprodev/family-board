@@ -60,6 +60,12 @@ describe("production smoke test", () => {
         });
       }
 
+      if (url.pathname === "/sw.js") {
+        return new Response("self.addEventListener('fetch', () => {});", {
+          headers: { "content-type": "application/javascript" },
+        });
+      }
+
       if (url.pathname === `/api/read/${readToken}`) {
         readCount += 1;
         return response(
@@ -149,6 +155,7 @@ describe("production smoke test", () => {
       "GET /manifest.webmanifest",
       "GET /icons/family-board-192.png",
       "GET /icons/family-board-512.png",
+      "GET /sw.js",
       `GET /api/read/${readToken}`,
       `GET /api/edit/${editToken}`,
       `POST /api/edit/${readToken}/items`,

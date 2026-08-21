@@ -1,9 +1,13 @@
 import { pathToFileURL } from "node:url";
 
-const tokenPattern = /(?:https?:\/\/[^\s/]+)?\/(?:read|edit)\/[A-Za-z0-9_-]{43}/g;
+const bearerTokenPattern = `[A-Za-z0-9_-]{43}`;
+const bearerLinkPattern = new RegExp(
+  `(?:https?:\/\/[^\\s/]+)?\/(?:read|edit)\/${bearerTokenPattern}`,
+  "g",
+);
 
-function safeMessage(message) {
-  return String(message).replace(tokenPattern, "/[bearer-link]");
+function redactBearerLinks(message) {
+  return String(message).replace(bearerLinkPattern, "/[bearer-link]");
 }
 
 function assert(condition, message) {
@@ -57,7 +61,9 @@ function tokenFromLink(link, access, expectedOrigin) {
     throw new Error(`${access} link was invalid`);
   }
 
-  const match = url.pathname.match(new RegExp(`^/${access}/([A-Za-z0-9_-]{43})$`));
+  const match = url.pathname.match(
+    new RegExp(`^/${access}/(${bearerTokenPattern})$`),
+  );
 
   if (!match) {
     throw new Error(`${access} link was invalid`);
@@ -175,6 +181,8 @@ export async function runProductionSmokeTest({
         "PWA icon",
       );
     }
+
+    await request(fetchImpl, origin, "/sw.js", undefined, 200, "PWA service worker");
 
     const readPath = `/api/read/${readToken}`;
     const editPath = `/api/edit/${editToken}`;
@@ -308,7 +316,9 @@ export async function runProductionSmokeTest({
 
     logger.log("Production smoke test passed: health, bearer-link access, and disposable Link item persistence verified.");
   } catch (error) {
-    const message = safeMessage(error instanceof Error ? error.message : "unknown failure");
+    const message = redactBearerLinks(
+      error instanceof Error ? error.message : "unknown failure",
+    );
     logger.error(`Production smoke test failed: ${message}`);
     throw new Error(message);
   }

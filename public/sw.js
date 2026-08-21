@@ -42,15 +42,42 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  if (request.mode === "navigate") {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const copy = response.clone();
+            void caches.open(CACHE_NAME).then((cache) => cache.put("/", copy));
+          }
+          return response;
+        })
+        .catch(() => caches.match("/")),
+    );
+    return;
+  }
+
+  const cacheableDestinations = new Set([
+    "font",
+    "image",
+    "manifest",
+    "script",
+    "style",
+  ]);
+
+  if (!cacheableDestinations.has(request.destination)) {
+    return;
+  }
+
   event.respondWith(
     fetch(request)
       .then((response) => {
-        if (response.ok && request.mode === "navigate") {
+        if (response.ok) {
           const copy = response.clone();
-          void caches.open(CACHE_NAME).then((cache) => cache.put("/", copy));
+          void caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
         }
         return response;
       })
-      .catch(() => caches.match(request).then((cached) => cached ?? caches.match("/"))),
+      .catch(() => caches.match(request)),
   );
 });
