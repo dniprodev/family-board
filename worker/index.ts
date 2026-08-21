@@ -502,7 +502,11 @@ async function rotateEditLink(request: Request, env: WorkerEnv, token: string) {
 }
 
 async function serveAssets(request: Request, env: WorkerEnv, url: URL) {
-  const response = await env.ASSETS.fetch(request);
+  const assetRequest =
+    request.method === "GET" && bearerPagePath.test(url.pathname)
+      ? new Request(new URL("/", request.url), request)
+      : request;
+  const response = await env.ASSETS.fetch(assetRequest);
   const headers = new Headers(response.headers);
 
   headers.set("referrer-policy", "no-referrer");

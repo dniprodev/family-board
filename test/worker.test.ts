@@ -152,6 +152,22 @@ describe("application boundary", () => {
     expect(response.headers.get("referrer-policy")).toBe("no-referrer");
   });
 
+  it("serves the application shell through bearer-link routes", async () => {
+    const response = await exports.default.fetch(
+      new Request(`https://family-board.test/read/${"a".repeat(43)}`, {
+        headers: { accept: "text/html" },
+      }),
+    );
+
+    const body = await response.text();
+
+    expect({ status: response.status, body }).toEqual({
+      status: 200,
+      body: expect.stringContaining("/manifest.webmanifest"),
+    });
+    expect(response.headers.get("content-type")).toContain("text/html");
+  });
+
   it("creates a Page with separate unguessable Read and Edit links", async () => {
     const links = await createPage();
     const readUrl = new URL(links.readLink);
