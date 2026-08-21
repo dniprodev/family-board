@@ -27,6 +27,10 @@ describe("production smoke test", () => {
         return response({ status: "ok" });
       }
 
+      if (url.pathname === "/api/config") {
+        return response({ turnstileSiteKey: "1x00000000000000000000AA" });
+      }
+
       if (url.pathname === "/api/pages") {
         return response(
           {
@@ -149,6 +153,7 @@ describe("production smoke test", () => {
 
     expect(calls.map(({ method, pathname }) => `${method} ${pathname}`)).toEqual([
       "GET /api/health",
+      "GET /api/config",
       "POST /api/pages",
       `GET /read/${readToken}`,
       `GET /edit/${editToken}`,

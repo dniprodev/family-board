@@ -106,6 +106,24 @@ export async function runProductionSmokeTest({
       "health check returned an unexpected status",
     );
 
+    const config = await request(
+      fetchImpl,
+      origin,
+      "/api/config",
+      undefined,
+      200,
+      "public configuration check",
+    );
+    const configBody = await readJson(config, "public configuration check");
+    const configKeys = Object.keys(configBody ?? {}).sort();
+    assert(
+      configKeys.length === 1 &&
+        configKeys[0] === "turnstileSiteKey" &&
+        typeof configBody?.turnstileSiteKey === "string" &&
+        configBody.turnstileSiteKey.length > 0,
+      "public configuration exposed unexpected fields or no site key",
+    );
+
     const creation = await request(
       fetchImpl,
       origin,
