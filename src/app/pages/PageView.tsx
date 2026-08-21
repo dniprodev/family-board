@@ -30,42 +30,67 @@ export function PageView({ access, token }: PageViewProps) {
   const [page, setPage] = useState<PageResponse | null>(null);
   const [failed, setFailed] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("saved");
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingSave = useRef<SaveEntry | null>(null);
-  const failedSave = useRef<SaveEntry | null>(null);
+  const pageRef = useRef<PageResponse | null>(null);
+  const saveTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const pendingSaves = useRef(new Map<string, SaveEntry>());
+  const failedSaves = useRef(new Map<string, SaveEntry>());
 
-  function queueSave(run: () => Promise<void>) {
+  pageRef.current = page;
+
+  function queueSave(key: string, run: () => Promise<void>) {
     const entry = { run };
-    pendingSave.current = entry;
-    failedSave.current = null;
+    pendingSaves.current.set(key, entry);
+    failedSaves.current.delete(key);
     setSaveState("saving");
 
-    if (saveTimer.current) {
-      clearTimeout(saveTimer.current);
+    const currentTimer = saveTimers.current.get(key);
+
+    if (currentTimer) {
+      clearTimeout(currentTimer);
     }
 
-    saveTimer.current = setTimeout(() => {
-      void executeSave(entry);
-    }, 500);
+    saveTimers.current.set(key, setTimeout(() => {
+      saveTimers.current.delete(key);
+      void executeSave(key, entry);
+    }, 500));
   }
 
-  async function executeSave(entry: SaveEntry) {
+  async function executeSave(key: string, entry: SaveEntry) {
     try {
       await entry.run();
 
-      if (pendingSave.current !== entry) {
+      if (pendingSaves.current.get(key) !== entry) {
         return;
       }
 
-      failedSave.current = null;
-      setSaveState("saved");
+      pendingSaves.current.delete(key);
+      failedSaves.current.delete(key);
+      if (pendingSaves.current.size === 0 && failedSaves.current.size === 0) {
+        setSaveState("saved");
+      }
     } catch {
-      if (pendingSave.current !== entry) {
+      if (pendingSaves.current.get(key) !== entry) {
         return;
       }
 
-      failedSave.current = entry;
+      failedSaves.current.set(key, entry);
       setSaveState("error");
+    }
+  }
+
+  function cancelSave(key: string) {
+    const timer = saveTimers.current.get(key);
+
+    if (timer) {
+      clearTimeout(timer);
+      saveTimers.current.delete(key);
+    }
+
+    pendingSaves.current.delete(key);
+    failedSaves.current.delete(key);
+
+    if (pendingSaves.current.size === 0 && failedSaves.current.size === 0) {
+      setSaveState("saved");
     }
   }
 
@@ -111,8 +136,8 @@ export function PageView({ access, token }: PageViewProps) {
 
   useEffect(() => {
     return () => {
-      if (saveTimer.current) {
-        clearTimeout(saveTimer.current);
+      for (const timer of saveTimers.current.values()) {
+        clearTimeout(timer);
       }
     };
   }, []);
@@ -134,17 +159,46 @@ export function PageView({ access, token }: PageViewProps) {
     ) });
 
     if (!isSavable(nextItem)) {
+      cancelSave(itemId);
       return;
     }
 
     const itemPath = `/api/edit/${encodeURIComponent(token)}/items`;
 
     if (itemId.startsWith("draft-")) {
-      const submitted = {
-        title: nextItem.title,
-        destinationUrl: nextItem.destinationUrl,
-      };
-      queueSave(async () => {
+      queueSave(itemId, async () => {
+        const currentItem = pageRef.current?.linkItems.find(
+          (candidate) => candidate.id === itemId,
+        );
+
+        if (!currentItem) {
+          return;
+        }
+
+        if (!currentItem.id.startsWith("draft-")) {
+          const response = await fetch(
+            `${itemPath}/${encodeURIComponent(currentItem.id)}`,
+            {
+              method: "PATCH",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                title: currentItem.title,
+                destinationUrl: currentItem.destinationUrl,
+              }),
+            },
+          );
+
+          if (!response.ok) {
+            throw new Error("Link item could not be saved");
+          }
+
+          return;
+        }
+
+        const submitted = {
+          title: currentItem.title,
+          destinationUrl: currentItem.destinationUrl,
+        };
         const response = await fetch(itemPath, {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -156,6 +210,17 @@ export function PageView({ access, token }: PageViewProps) {
         }
 
         const result = (await response.json()) as { linkItem: PageResponse["linkItems"][number] };
+        const latestItem = pageRef.current?.linkItems.find(
+          (candidate) => candidate.id === itemId,
+        );
+
+        if (!latestItem) {
+          await fetch(`${itemPath}/${encodeURIComponent(result.linkItem.id)}`, {
+            method: "DELETE",
+          });
+          return;
+        }
+
         setPage((currentPage) => {
           if (!currentPage) {
             return currentPage;
@@ -170,17 +235,65 @@ export function PageView({ access, token }: PageViewProps) {
             ),
           };
         });
+
+        if (
+          latestItem.title !== submitted.title ||
+          latestItem.destinationUrl !== submitted.destinationUrl
+        ) {
+          const followUp = await fetch(
+            `${itemPath}/${encodeURIComponent(result.linkItem.id)}`,
+            {
+              method: "PATCH",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                title: latestItem.title,
+                destinationUrl: latestItem.destinationUrl,
+              }),
+            },
+          );
+
+          if (!followUp.ok) {
+            throw new Error("Link item could not be saved");
+          }
+        }
+
+        const currentOrder = pageRef.current?.linkItems.map((candidate) =>
+          candidate.id === itemId ? result.linkItem.id : candidate.id,
+        );
+
+        if (currentOrder && !currentOrder.some((id) => id.startsWith("draft-"))) {
+          const orderResponse = await fetch(
+            `${itemPath}/reorder`,
+            {
+              method: "PATCH",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ itemIds: currentOrder }),
+            },
+          );
+
+          if (!orderResponse.ok) {
+            throw new Error("Link item order could not be saved");
+          }
+        }
       });
       return;
     }
 
-    queueSave(async () => {
-      const response = await fetch(`${itemPath}/${encodeURIComponent(itemId)}`, {
+    queueSave(itemId, async () => {
+      const currentItem = pageRef.current?.linkItems.find(
+        (candidate) => candidate.id === itemId,
+      );
+
+      if (!currentItem) {
+        return;
+      }
+
+      const response = await fetch(`${itemPath}/${encodeURIComponent(currentItem.id)}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          title: nextItem.title,
-          destinationUrl: nextItem.destinationUrl,
+          title: currentItem.title,
+          destinationUrl: currentItem.destinationUrl,
         }),
       });
 
@@ -230,7 +343,7 @@ export function PageView({ access, token }: PageViewProps) {
       return;
     }
 
-    queueSave(async () => {
+    queueSave(itemId, async () => {
       const response = await fetch(
         `/api/edit/${encodeURIComponent(token)}/items/${encodeURIComponent(itemId)}`,
         { method: "DELETE" },
@@ -271,7 +384,7 @@ export function PageView({ access, token }: PageViewProps) {
       return;
     }
 
-    queueSave(async () => {
+    queueSave("reorder", async () => {
       const response = await fetch(
         `/api/edit/${encodeURIComponent(token)}/items/reorder`,
         {
@@ -324,8 +437,8 @@ export function PageView({ access, token }: PageViewProps) {
                 <div className="error-panel" role="alert">
                   Your changes are still on this device. Check your connection and
                   <button className="inline-button" onClick={() => {
-                    if (failedSave.current) {
-                      void executeSave(failedSave.current);
+                    for (const [key, entry] of failedSaves.current) {
+                      void executeSave(key, entry);
                     }
                   }} type="button">
                     retry the save
