@@ -224,9 +224,29 @@ describe("application boundary", () => {
     expect(await oldEditResponse.json()).toEqual({ error: "Page not found" });
     expect(newEditResponse.status).toBe(200);
     expect(readResponse.status).toBe(200);
+
+    const newEditMutation = await request(`/api/edit/${newEditToken}/items`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        title: "Rotated access",
+        destinationUrl: "https://example.com/rotated",
+      }),
+    });
+    const oldEditMutation = await request(`/api/edit/${oldEditToken}/items`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        title: "Revoked access",
+        destinationUrl: "https://example.com/revoked",
+      }),
+    });
+
+    expect(newEditMutation.status).toBe(201);
+    expect(oldEditMutation.status).toBe(404);
   });
 
-  it("does not let a Read link or unknown credential rotate an Edit link", async () => {
+  it("does not let a Read link or unknown Edit link rotate an Edit link", async () => {
     const links = await createPage();
     const readToken = new URL(links.readLink).pathname.split("/").pop();
     const unknownToken = "a".repeat(43);
@@ -339,7 +359,7 @@ describe("application boundary", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title: "", destinationUrl: "javascript:alert(1)" }),
     });
-    const readMutation = await request(`/api/read/${readToken}/items`, {
+    const readMutation = await request(`/api/edit/${readToken}/items`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({

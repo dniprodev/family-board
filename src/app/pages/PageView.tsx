@@ -35,6 +35,7 @@ export function PageView({ access, token }: PageViewProps) {
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [rotationState, setRotationState] = useState<RotationState>("idle");
   const [rotatedEditLink, setRotatedEditLink] = useState<string | null>(null);
+  const activeTokenRef = useRef(token);
   const pageRef = useRef<PageResponse | null>(null);
   const saveTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const pendingSaves = useRef(new Map<string, SaveEntry>());
@@ -42,6 +43,7 @@ export function PageView({ access, token }: PageViewProps) {
   const saveChains = useRef(new Map<string, Promise<void>>());
 
   pageRef.current = page;
+  activeTokenRef.current = activeToken;
 
   useEffect(() => {
     setActiveToken(token);
@@ -181,7 +183,8 @@ export function PageView({ access, token }: PageViewProps) {
       return;
     }
 
-    const itemPath = `/api/edit/${encodeURIComponent(activeToken)}/items`;
+    const itemPath = () =>
+      `/api/edit/${encodeURIComponent(activeTokenRef.current)}/items`;
 
     if (itemId.startsWith("draft-")) {
       queueSave(itemId, async () => {
@@ -195,7 +198,7 @@ export function PageView({ access, token }: PageViewProps) {
 
         if (!currentItem.id.startsWith("draft-")) {
           const response = await fetch(
-            `${itemPath}/${encodeURIComponent(currentItem.id)}`,
+            `${itemPath()}/${encodeURIComponent(currentItem.id)}`,
             {
               method: "PATCH",
               headers: { "content-type": "application/json" },
@@ -217,7 +220,7 @@ export function PageView({ access, token }: PageViewProps) {
           title: currentItem.title,
           destinationUrl: currentItem.destinationUrl,
         };
-        const response = await fetch(itemPath, {
+        const response = await fetch(itemPath(), {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(submitted),
@@ -233,7 +236,7 @@ export function PageView({ access, token }: PageViewProps) {
         );
 
         if (!latestItem) {
-          await fetch(`${itemPath}/${encodeURIComponent(result.linkItem.id)}`, {
+          await fetch(`${itemPath()}/${encodeURIComponent(result.linkItem.id)}`, {
             method: "DELETE",
           });
           return;
@@ -259,7 +262,7 @@ export function PageView({ access, token }: PageViewProps) {
           latestItem.destinationUrl !== submitted.destinationUrl
         ) {
           const followUp = await fetch(
-            `${itemPath}/${encodeURIComponent(result.linkItem.id)}`,
+            `${itemPath()}/${encodeURIComponent(result.linkItem.id)}`,
             {
               method: "PATCH",
               headers: { "content-type": "application/json" },
@@ -281,7 +284,7 @@ export function PageView({ access, token }: PageViewProps) {
 
         if (currentOrder && !currentOrder.some((id) => id.startsWith("draft-"))) {
           const orderResponse = await fetch(
-            `${itemPath}/reorder`,
+            `${itemPath()}/reorder`,
             {
               method: "PATCH",
               headers: { "content-type": "application/json" },
@@ -306,7 +309,7 @@ export function PageView({ access, token }: PageViewProps) {
         return;
       }
 
-      const response = await fetch(`${itemPath}/${encodeURIComponent(currentItem.id)}`, {
+      const response = await fetch(`${itemPath()}/${encodeURIComponent(currentItem.id)}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -378,7 +381,7 @@ export function PageView({ access, token }: PageViewProps) {
 
       try {
         response = await fetch(
-          `/api/edit/${encodeURIComponent(activeToken)}/items/${encodeURIComponent(itemId)}`,
+          `/api/edit/${encodeURIComponent(activeTokenRef.current)}/items/${encodeURIComponent(itemId)}`,
           { method: "DELETE" },
         );
       } catch (error) {
@@ -424,7 +427,7 @@ export function PageView({ access, token }: PageViewProps) {
       }
 
       const response = await fetch(
-        `/api/edit/${encodeURIComponent(activeToken)}/items/reorder`,
+        `/api/edit/${encodeURIComponent(activeTokenRef.current)}/items/reorder`,
         {
           method: "PATCH",
           headers: { "content-type": "application/json" },
@@ -443,7 +446,7 @@ export function PageView({ access, token }: PageViewProps) {
 
     try {
       const response = await fetch(
-        `/api/edit/${encodeURIComponent(activeToken)}/rotate`,
+        `/api/edit/${encodeURIComponent(activeTokenRef.current)}/rotate`,
         { method: "POST" },
       );
 
@@ -467,6 +470,7 @@ export function PageView({ access, token }: PageViewProps) {
       }
 
       window.history.replaceState(null, "", newEditUrl.pathname);
+      activeTokenRef.current = newToken;
       setActiveToken(newToken);
       setRotatedEditLink(result.editLink);
       setRotationState("idle");
