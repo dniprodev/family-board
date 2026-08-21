@@ -34,6 +34,7 @@ export function PageView({ access, token }: PageViewProps) {
   const saveTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const pendingSaves = useRef(new Map<string, SaveEntry>());
   const failedSaves = useRef(new Map<string, SaveEntry>());
+  const saveChains = useRef(new Map<string, Promise<void>>());
 
   pageRef.current = page;
 
@@ -56,8 +57,12 @@ export function PageView({ access, token }: PageViewProps) {
   }
 
   async function executeSave(key: string, entry: SaveEntry) {
+    const previousSave = saveChains.current.get(key) ?? Promise.resolve();
+    const currentSave = previousSave.catch(() => undefined).then(() => entry.run());
+    saveChains.current.set(key, currentSave);
+
     try {
-      await entry.run();
+      await currentSave;
 
       if (pendingSaves.current.get(key) !== entry) {
         return;
@@ -75,6 +80,10 @@ export function PageView({ access, token }: PageViewProps) {
 
       failedSaves.current.set(key, entry);
       setSaveState("error");
+    } finally {
+      if (saveChains.current.get(key) === currentSave) {
+        saveChains.current.delete(key);
+      }
     }
   }
 
@@ -343,22 +352,33 @@ export function PageView({ access, token }: PageViewProps) {
       return;
     }
 
+    const restoreDeletedItem = () => {
+      setPage((currentPage) => {
+        if (!currentPage || currentPage.linkItems.some((item) => item.id === itemId)) {
+          return currentPage;
+        }
+
+        const linkItems = [...currentPage.linkItems];
+        linkItems.splice(deletedIndex, 0, deletedItem);
+        return { ...currentPage, linkItems };
+      });
+    };
+
     queueSave(itemId, async () => {
-      const response = await fetch(
-        `/api/edit/${encodeURIComponent(token)}/items/${encodeURIComponent(itemId)}`,
-        { method: "DELETE" },
-      );
+      let response: Response;
+
+      try {
+        response = await fetch(
+          `/api/edit/${encodeURIComponent(token)}/items/${encodeURIComponent(itemId)}`,
+          { method: "DELETE" },
+        );
+      } catch (error) {
+        restoreDeletedItem();
+        throw error;
+      }
 
       if (!response.ok) {
-        setPage((currentPage) => {
-          if (!currentPage || currentPage.linkItems.some((item) => item.id === itemId)) {
-            return currentPage;
-          }
-
-          const linkItems = [...currentPage.linkItems];
-          linkItems.splice(deletedIndex, 0, deletedItem);
-          return { ...currentPage, linkItems };
-        });
+        restoreDeletedItem();
         throw new Error("Link item could not be deleted");
       }
     });
@@ -385,12 +405,21 @@ export function PageView({ access, token }: PageViewProps) {
     }
 
     queueSave("reorder", async () => {
+      const currentOrder = pageRef.current?.linkItems.map((item) => item.id);
+
+      if (
+        !currentOrder ||
+        currentOrder.some((id) => id.startsWith("draft-"))
+      ) {
+        return;
+      }
+
       const response = await fetch(
         `/api/edit/${encodeURIComponent(token)}/items/reorder`,
         {
           method: "PATCH",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ itemIds: linkItems.map((item) => item.id) }),
+          body: JSON.stringify({ itemIds: currentOrder }),
         },
       );
 
