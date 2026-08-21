@@ -3,6 +3,7 @@
   "name": "family-board",
   "main": "worker/index.ts",
   "compatibility_date": "2026-08-19",
+  "workers_dev": true,
   "assets": {
     "directory": "./dist/client",
     "not_found_handling": "single-page-application"
@@ -11,6 +12,7 @@
     {
       "binding": "DB",
       "database_name": "family-board",
+      // Replace this safe placeholder with the ID from `wrangler d1 create`.
       "database_id": "00000000-0000-0000-0000-000000000001",
       "migrations_dir": "migrations"
     }

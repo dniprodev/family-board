@@ -30,7 +30,8 @@ npm install
 npm run db:migrate:local
 ```
 
-Start the Vite development server:
+Start the Vite development server. The Cloudflare Vite plugin runs the React
+frontend and Worker together, with a local D1 simulation for `DB`:
 
 ```sh
 npm run dev
@@ -38,6 +39,13 @@ npm run dev
 
 The application and Worker API are available at the local URL printed by Vite.
 The foundation health endpoint is `GET /api/health`.
+
+To preview the production build in the Workers runtime, use:
+
+```sh
+npm run build
+npm run preview
+```
 
 ## Verification
 
@@ -54,22 +62,37 @@ implemented.
 
 ## D1 and deployment
 
-The checked-in `wrangler.jsonc` contains the local configuration and a
-placeholder database ID. To create a remote database, authenticate with
-Wrangler and create the database:
+The checked-in `wrangler.jsonc` defines the `DB` binding, migration directory,
+and `workers_dev: true` deployment target. The database ID is not a credential,
+but the committed value is a safe placeholder until a maintainer creates the
+production database. Complete the one-time Cloudflare account steps with:
 
 ```sh
 npx wrangler login
 npx wrangler d1 create family-board
 ```
 
-Copy the returned database ID into `wrangler.jsonc`, then apply migrations and
-deploy:
+Copy the returned database ID into `wrangler.jsonc` as `database_id`. Do not
+commit API tokens, `.dev.vars*`, or other secrets. Apply the production schema
+and deploy the Worker and built frontend:
 
 ```sh
 npm run db:migrate:remote
 npm run deploy
 ```
 
-Do not commit Cloudflare credentials, `.dev.vars`, or production database
-secrets. The initial deployment target is a `workers.dev` hostname.
+Wrangler prints the deployed `workers.dev` URL. Verify the public health check
+without exposing Page data or bearer credentials:
+
+```sh
+npm run smoke:health -- https://family-board.<subdomain>.workers.dev
+```
+
+The same command can read `FAMILY_BOARD_URL` when it is more convenient:
+
+```sh
+FAMILY_BOARD_URL=https://family-board.<subdomain>.workers.dev npm run smoke:health
+```
+
+The smoke test requests `/api/health` and requires HTTP 200, a JSON content
+type, and the exact body `{\"status\":\"ok\"}`.
