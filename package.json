@@ -13,7 +13,8 @@
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
     "deploy": "npm run build && wrangler deploy",
-    "smoke:health": "node scripts/smoke-health.mjs"
+    "smoke:health": "node scripts/smoke-health.mjs",
+    "smoke:production": "node scripts/smoke-production.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.2",

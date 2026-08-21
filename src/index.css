@@ -132,6 +132,7 @@ button {
 }
 
 .primary-button {
+  min-height: 44px;
   padding: 12px 20px;
   border: 0;
   border-radius: 12px;
@@ -347,6 +348,8 @@ button {
 
 .save-status {
   flex-shrink: 0;
+  min-height: 24px;
+  padding: 4px 0;
   color: #315247;
   font-size: 14px;
   font-weight: 600;
@@ -387,11 +390,15 @@ button {
 
 .editor-item-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+  justify-content: flex-end;
 }
 
 .editor-item-actions button,
 .secondary-button {
+  min-height: 44px;
+  min-width: 44px;
   padding: 8px 10px;
   border: 1px solid #b8c5bb;
   border-radius: 8px;
@@ -418,6 +425,7 @@ button {
 .editor-field input {
   width: 100%;
   min-width: 0;
+  min-height: 44px;
   padding: 11px 12px;
   border: 1px solid #b8c5bb;
   border-radius: 8px;
@@ -485,8 +493,23 @@ button {
     display: grid;
   }
 
+  .editor-item-heading {
+    align-items: stretch;
+  }
+
+  .editor-item-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
   .editor-item-actions button {
+    width: 100%;
     padding: 8px;
+  }
+
+  .editor-item-actions button:last-child {
+    grid-column: 1 / -1;
   }
 }
 

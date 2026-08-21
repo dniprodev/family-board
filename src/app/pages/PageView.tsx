@@ -75,7 +75,9 @@ export function PageView({ access, token }: PageViewProps) {
     try {
       await currentSave;
 
-      if (pendingSaves.current.get(key) !== entry) {
+      const currentEntry = pendingSaves.current.get(key) ?? failedSaves.current.get(key);
+
+      if (currentEntry !== entry) {
         return;
       }
 
@@ -114,6 +116,18 @@ export function PageView({ access, token }: PageViewProps) {
     }
   }
 
+  function retryFailedSaves() {
+    for (const [key, entry] of failedSaves.current) {
+      failedSaves.current.delete(key);
+      pendingSaves.current.set(key, entry);
+      void executeSave(key, entry);
+    }
+
+    if (pendingSaves.current.size > 0) {
+      setSaveState("saving");
+    }
+  }
+
   useEffect(() => {
     if (access !== "read") {
       return;
@@ -131,6 +145,7 @@ export function PageView({ access, token }: PageViewProps) {
 
   useEffect(() => {
     const controller = new AbortController();
+    setFailed(false);
 
     fetch(`/api/${access}/${encodeURIComponent(activeToken)}`, {
       signal: controller.signal,
@@ -516,9 +531,7 @@ export function PageView({ access, token }: PageViewProps) {
                 <div className="error-panel" role="alert">
                   Your changes are still on this device. Check your connection and
                   <button className="inline-button" onClick={() => {
-                    for (const [key, entry] of failedSaves.current) {
-                      void executeSave(key, entry);
-                    }
+                    retryFailedSaves();
                   }} type="button">
                     retry the save
                   </button>

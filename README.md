@@ -65,7 +65,13 @@ The Edit view keeps drafts local until they contain a title and valid
 destination URL, then autosaves changes after a short debounce. It shows
 Saving, Saved, and Save failed states; failed requests keep the current local
 form state available for retry. Read-link requests cannot use the item
-mutation endpoints.
+mutation endpoints. The retry action resubmits the latest failed request
+without discarding the current form state.
+
+The Editor is PWA-capable where the browser supports web app installation. It
+provides a manifest, install icons, and a small app-shell service worker. API
+requests and bearer-link Pages are always fetched from the network and are not
+cached by the service worker.
 
 The Worker stores only SHA-256 hashes of the bearer tokens. Do not paste Read
 or Edit links into logs, diagnostics, or issue comments.
@@ -135,6 +141,25 @@ The same command can read `FAMILY_BOARD_URL` when it is more convenient:
 ```sh
 FAMILY_BOARD_URL=https://family-board.<subdomain>.workers.dev npm run smoke:health
 ```
+
+After deployment, run the disposable end-to-end smoke test. It requires a
+short-lived Turnstile response token from the production widget; keep that
+token in the environment and never put it in shell history or logs:
+
+```sh
+read -r -s FAMILY_BOARD_TURNSTILE_TOKEN
+export FAMILY_BOARD_TURNSTILE_TOKEN
+npm run smoke:production -- https://family-board.<subdomain>.workers.dev
+unset FAMILY_BOARD_TURNSTILE_TOKEN
+```
+
+The test checks health, the generated Read/Edit routes, the PWA manifest and
+icons, creates a disposable Page, exercises Read-link and Edit-link access,
+rejects a Read-link write, creates/updates/reorders/deletes a Link item,
+verifies the saved result through the Read link, and verifies Edit-link
+rotation. It prints only a credential-free summary.
+The Page is disposable test data; the script retains no bearer links after it
+finishes and never prints them.
 
 The smoke test requests `/api/health` and requires HTTP 200, a JSON content
 type, and the exact body `{\"status\":\"ok\"}`.
