@@ -40,6 +40,21 @@ npm run dev
 The application and Worker API are available at the local URL printed by Vite.
 The foundation health endpoint is `GET /api/health`.
 
+Open the root URL to create a Page. The response displays separate Read and
+Edit links; save the Edit link because it is the only account-free way to
+return as the Editor. A Read link opens an empty Page until Link items are
+added in the editor slice.
+
+The application boundary for this slice is:
+
+- `POST /api/pages` creates a Page and returns `readLink` and `editLink`.
+- `GET /api/read/:token` returns the Page's Link items with `access: "read"`.
+- `GET /api/edit/:token` validates the separate Edit link and returns the Page
+  with `access: "edit"`.
+
+The Worker stores only SHA-256 hashes of the bearer tokens. Do not paste Read
+or Edit links into logs, diagnostics, or issue comments.
+
 To preview the production build in the Workers runtime, use:
 
 ```sh
@@ -56,9 +71,9 @@ npm run build
 ```
 
 Worker boundary tests run locally in the Cloudflare Workers runtime with
-isolated test storage. The initial suite intentionally starts at the
-application boundary; feature behavior will extend this seam as the MVP is
-implemented.
+isolated test storage. The suite exercises Page creation, separate bearer
+links, empty Read and Edit responses, unknown-link rejection, and the health
+endpoint through HTTP requests.
 
 ## D1 and deployment
 
