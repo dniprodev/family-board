@@ -490,7 +490,16 @@ export function PageView({ access, token }: PageViewProps) {
 
         <section className="page-content">
           <p className="eyebrow">{access === "read" ? "Read link" : "Edit link"}</p>
-          <h1 className="page-title">Family Board</h1>
+          <div className="page-title-row">
+            <h1 className="page-title">Family Board</h1>
+            {page && access === "edit" && (
+              <div className="save-status" role="status">
+                {saveState === "saving" && "Saving…"}
+                {saveState === "saved" && "Saved"}
+                {saveState === "error" && "Save failed"}
+              </div>
+            )}
+          </div>
 
           {!page && !failed && <p className="loading-message">Loading Page…</p>}
 
@@ -501,19 +510,11 @@ export function PageView({ access, token }: PageViewProps) {
           )}
 
           {page && access === "edit" && (
-            <section className="editor-panel" aria-label="Edit Page">
-              <div className="editor-panel-heading">
-                <div>
-                  <h2 className="editor-panel-title">Link items</h2>
-                  <p className="editor-panel-description">
-                    Changes save automatically as you edit.
-                  </p>
-                </div>
-                <div className="save-status" role="status">
-                  {saveState === "saving" && "Saving…"}
-                  {saveState === "saved" && "Saved"}
-                  {saveState === "error" && "Save failed"}
-                </div>
+            <>
+              <div className="editor-actions">
+                <button aria-label="Add Link item" className="add-link-button" onClick={addDraft} title="Add Link item" type="button">
+                  <span aria-hidden="true">+</span>
+                </button>
               </div>
 
               {saveState === "error" && (
@@ -528,15 +529,11 @@ export function PageView({ access, token }: PageViewProps) {
                 </div>
               )}
 
-              <button className="secondary-button" onClick={addDraft} type="button">
-                Add Link item
-              </button>
-
               {page.linkItems.length === 0 && (
                 <p className="editor-empty-message">Add your first Link item above.</p>
               )}
 
-              <div className="editor-item-list">
+              <section className="editor-item-list" aria-label="Link items">
                 {page.linkItems.map((item, index) => (
                   <article className="editor-item" key={item.id}>
                     <div className="editor-item-heading">
@@ -563,9 +560,8 @@ export function PageView({ access, token }: PageViewProps) {
                     </label>
                   </article>
                 ))}
-              </div>
-
-            </section>
+              </section>
+            </>
           )}
 
           {page && access === "read" && page.linkItems.length === 0 && (

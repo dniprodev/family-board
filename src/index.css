@@ -257,6 +257,13 @@ button {
   line-height: 1.1;
 }
 
+.page-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
 .loading-message {
   margin: 24px 0 0;
   color: #5d6c68;
@@ -321,21 +328,37 @@ button {
   background: white;
 }
 
-.editor-panel {
-  display: grid;
-  gap: 20px;
+.editor-actions {
+  display: flex;
+  justify-content: flex-end;
   margin-top: 32px;
-  padding: 20px;
-  border: 1px solid #d8d1c5;
-  border-radius: 16px;
-  background: #fbf8f2;
 }
 
-.editor-panel-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
+.add-link-button {
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0 3px;
+  border: 0;
+  border-radius: 50%;
+  background: #315247;
+  color: white;
+  cursor: pointer;
+  font-size: 28px;
+  font-weight: 400;
+  line-height: 1;
+  transition: background 150ms ease;
+}
+
+.add-link-button:hover {
+  background: #243f37;
+}
+
+.add-link-button:focus-visible {
+  outline: 2px solid #315247;
+  outline-offset: 3px;
 }
 
 .editor-panel-title {
@@ -364,6 +387,7 @@ button {
 .editor-item-list {
   display: grid;
   gap: 12px;
+  margin-top: 20px;
 }
 
 .editor-item {
@@ -508,10 +532,6 @@ button {
   .page-title,
   .home-title {
     font-size: 34px;
-  }
-
-  .editor-panel-heading {
-    display: grid;
   }
 
   .editor-item-heading {
