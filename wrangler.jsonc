@@ -6,7 +6,7 @@
   "workers_dev": true,
   "vars": {
     "TURNSTILE_SITE_KEY": "0x4AAAAAAEXbB2Vo8eI8fGmP",
-    "TURNSTILE_HOSTNAMES": "family-board.family-board.workers.dev"
+    "TURNSTILE_HOSTNAMES": ["family-board.family-board.workers.dev"]
   },
   "secrets": {
     "required": ["TURNSTILE_SECRET"]

@@ -184,6 +184,7 @@ describe("production smoke test", () => {
     expect(readCount).toBe(4);
     expect(output).not.toContain(readToken);
     expect(output).not.toContain(editToken);
+    expect(output).not.toContain("turnstile-token");
     expect(output).not.toContain("/read/");
     expect(output).not.toContain("/edit/");
   });

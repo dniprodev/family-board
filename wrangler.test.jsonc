@@ -6,7 +6,7 @@
   "vars": {
     "TURNSTILE_SECRET": "1x0000000000000000000000000000000AA",
     "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
-    "TURNSTILE_HOSTNAMES": "family-board.test"
+    "TURNSTILE_HOSTNAMES": ["family-board.test"]
   },
   "ratelimits": [
     {

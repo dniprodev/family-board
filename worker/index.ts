@@ -81,9 +81,23 @@ async function allowRequest(
 }
 
 function configuredHostnames(env: WorkerEnv) {
+  const configured = env.TURNSTILE_HOSTNAMES as unknown;
+  let hostnames: unknown[] = [];
+
+  if (Array.isArray(configured)) {
+    hostnames = configured;
+  } else if (typeof configured === "string") {
+    try {
+      const parsed = JSON.parse(configured);
+      hostnames = Array.isArray(parsed) ? parsed : configured.split(",");
+    } catch {
+      hostnames = configured.split(",");
+    }
+  }
+
   return new Set(
-    (env.TURNSTILE_HOSTNAMES ?? "")
-      .split(",")
+    hostnames
+      .filter((hostname): hostname is string => typeof hostname === "string")
       .map((hostname) => hostname.trim().toLowerCase())
       .filter(Boolean),
   );
