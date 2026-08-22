@@ -26,7 +26,39 @@ try {
     throw new Error(`unexpected health response body: ${body}`);
   }
 
-  console.log(`Health check passed: ${healthUrl}`);
+  const configUrl = new URL("/api/config", baseUrl).toString();
+  const configResponse = await fetch(configUrl);
+  const configBody = await configResponse.json();
+  const configKeys = Object.keys(configBody ?? {}).sort();
+
+  if (configResponse.status !== 200) {
+    throw new Error(`expected public config HTTP 200, received HTTP ${configResponse.status}`);
+  }
+
+  if (
+    configKeys.length !== 1 ||
+    configKeys[0] !== "turnstileSiteKey" ||
+    typeof configBody?.turnstileSiteKey !== "string" ||
+    configBody.turnstileSiteKey.length === 0
+  ) {
+    throw new Error("public config exposed unexpected fields or no site key");
+  }
+
+  const shellUrl = new URL("/read/health-check", baseUrl).toString();
+  const shellResponse = await fetch(shellUrl, {
+    headers: { accept: "text/html" },
+  });
+  const shellBody = await shellResponse.text();
+
+  if (
+    shellResponse.status !== 200 ||
+    !shellResponse.headers.get("content-type")?.includes("text/html") ||
+    !shellBody.includes("/manifest.webmanifest")
+  ) {
+    throw new Error("SPA shell route did not return HTML");
+  }
+
+  console.log(`Production health/config/SPA checks passed: ${healthUrl}`);
 } catch (error) {
   console.error(
     `Health check failed for ${healthUrl}: ${error instanceof Error ? error.message : error}`,

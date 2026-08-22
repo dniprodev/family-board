@@ -16,6 +16,7 @@ concurrency:
 jobs:
   deploy:
     name: Checks and deploy
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: production
@@ -50,5 +51,5 @@ jobs:
           wranglerVersion: 4.125.0
           command: deploy
 
-      - name: Verify production health
+      - name: Verify production endpoints
         run: npm run smoke:health -- https://family-board.family-board.workers.dev

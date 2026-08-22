@@ -8,7 +8,8 @@ GitHub Actions **Run workflow** button. It runs the repository checks in order:
 3. `npm test`
 4. `npm run build`
 5. Wrangler deployment to the production Worker
-6. `npm run smoke:health` against the public Worker URL
+6. `npm run smoke:health` against the public Worker URL, checking health,
+   public configuration, and the SPA shell route
 
 ## GitHub setup
 
@@ -23,7 +24,7 @@ Keep the token only in GitHub's encrypted secrets storage. Do not put it in the
 repository, workflow YAML, or command output. The Worker-side
 `TURNSTILE_SECRET` remains managed in Cloudflare and is not copied into GitHub.
 
-The workflow intentionally runs the public health check after deployment, but
+The workflow intentionally runs public endpoint checks after deployment, but
 does not run `smoke:production`: that test requires a fresh, browser-issued
 Turnstile token and disposable production data, which should not be automated
 from a static CI secret.
