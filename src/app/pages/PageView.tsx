@@ -441,51 +441,6 @@ export function PageView({ access, token }: PageViewProps) {
     });
   }
 
-  function moveItem(itemId: string, direction: -1 | 1) {
-    if (!page || access !== "edit") {
-      return;
-    }
-
-    const index = page.linkItems.findIndex((item) => item.id === itemId);
-    const targetIndex = index + direction;
-
-    if (index < 0 || targetIndex < 0 || targetIndex >= page.linkItems.length) {
-      return;
-    }
-
-    const linkItems = [...page.linkItems];
-    [linkItems[index], linkItems[targetIndex]] = [linkItems[targetIndex], linkItems[index]];
-    setPage({ ...page, linkItems });
-
-    if (linkItems.some((item) => item.id.startsWith("draft-"))) {
-      return;
-    }
-
-    queueSave("reorder", async () => {
-      const currentOrder = pageRef.current?.linkItems.map((item) => item.id);
-
-      if (
-        !currentOrder ||
-        currentOrder.some((id) => id.startsWith("draft-"))
-      ) {
-        return;
-      }
-
-      const response = await fetch(
-        `/api/edit/${encodeURIComponent(activeTokenRef.current)}/items/reorder`,
-        {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ itemIds: currentOrder }),
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error("Link item order could not be saved");
-      }
-    });
-  }
-
   async function rotateEditLink() {
     setRotationState("rotating");
 
@@ -584,13 +539,20 @@ export function PageView({ access, token }: PageViewProps) {
               <div className="editor-item-list">
                 {page.linkItems.map((item, index) => (
                   <article className="editor-item" key={item.id}>
-                    {item.createdAt && (
-                      <div className="editor-item-heading">
+                    <div className="editor-item-heading">
+                      {item.createdAt && (
                         <time className="link-item-added" dateTime={item.createdAt}>
                           Added {formatCreatedAt(item.createdAt)}
                         </time>
+                      )}
+                      <div className="editor-item-actions" aria-label={`Actions for Link item ${index + 1}`}>
+                        <button aria-label={`Delete Link item ${index + 1}`} className="delete-button" onClick={() => deleteItem(item.id)} title="Delete" type="button">
+                          <svg aria-hidden="true" viewBox="0 0 24 24">
+                            <path d="M5 7h14m-9 4v6m4-6v6M9 7V5h6v2m-8 0 1 13h8l1-13" />
+                          </svg>
+                        </button>
                       </div>
-                    )}
+                    </div>
                     <label className="editor-field">
                       <span>Link</span>
                       <input onChange={(event) => updateItem(item.id, "destinationUrl", event.target.value)} placeholder="https://example.com" type="url" value={item.destinationUrl} />
@@ -599,15 +561,6 @@ export function PageView({ access, token }: PageViewProps) {
                       <span>Title (optional)</span>
                       <input onChange={(event) => updateItem(item.id, "title", event.target.value)} value={item.title} />
                     </label>
-                    <div className="editor-item-actions" aria-label={`Actions for Link item ${index + 1}`}>
-                      <button aria-label={`Move Link item ${index + 1} up`} disabled={index === 0} onClick={() => moveItem(item.id, -1)} title="Move up" type="button">↑</button>
-                      <button aria-label={`Move Link item ${index + 1} down`} disabled={index === page.linkItems.length - 1} onClick={() => moveItem(item.id, 1)} title="Move down" type="button">↓</button>
-                      <button aria-label={`Delete Link item ${index + 1}`} className="delete-button" onClick={() => deleteItem(item.id)} title="Delete" type="button">
-                        <svg aria-hidden="true" viewBox="0 0 24 24">
-                          <path d="M5 7h14m-9 4v6m4-6v6M9 7V5h6v2m-8 0 1 13h8l1-13" />
-                        </svg>
-                      </button>
-                    </div>
                   </article>
                 ))}
               </div>
