@@ -191,6 +191,7 @@ describe("production smoke test", () => {
 
   it("reports failures without echoing response details or bearer credentials", async () => {
     const logger = { log: vi.fn(), error: vi.fn() };
+    const turnstileToken = "turnstile-token";
     const fetchImpl = vi.fn(async () =>
       response({
         error: `Page not found at /read/${readToken}`,
@@ -200,7 +201,7 @@ describe("production smoke test", () => {
     await expect(
       runProductionSmokeTest({
         baseUrl,
-        turnstileToken: "turnstile-token",
+        turnstileToken,
         fetchImpl,
         logger,
       }),
@@ -208,6 +209,7 @@ describe("production smoke test", () => {
 
     const output = logger.error.mock.calls.flat().join(" ");
     expect(output).not.toContain(readToken);
+    expect(output).not.toContain(turnstileToken);
     expect(output).not.toContain("/read/");
   });
 });
