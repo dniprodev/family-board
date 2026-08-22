@@ -19,7 +19,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    environment: production
+    environment: Prod
 
     steps:
       - name: Check out repository

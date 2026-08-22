@@ -13,8 +13,8 @@ GitHub Actions **Run workflow** button. It runs the repository checks in order:
 
 ## GitHub setup
 
-Create a GitHub environment named `production`, then add these environment
-secrets under **Settings → Environments → production → Environment secrets**:
+Use the existing GitHub environment named `Prod`, then add these environment
+secrets under **Settings → Environments → Prod → Environment secrets**:
 
 - `CLOUDFLARE_API_TOKEN`: a narrowly scoped Cloudflare API token with the
   permissions required to deploy this Worker
