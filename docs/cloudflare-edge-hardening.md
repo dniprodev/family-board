@@ -46,8 +46,8 @@ checked into Git. Complete these steps before relying on Page creation:
    exact `workers.dev` hostname (and any later custom hostname), not a wildcard
    or a local hostname.
 2. Set `TURNSTILE_SITE_KEY` and `TURNSTILE_HOSTNAMES` in the production
-   `vars` section of `wrangler.jsonc`. `TURNSTILE_HOSTNAMES` is a comma-separated
-   exact hostname allowlist and must not contain `localhost` or `127.0.0.1` in
+   `vars` section of `wrangler.jsonc`. `TURNSTILE_HOSTNAMES` must be an exact
+   JSON array of hostnames and must not contain `localhost` or `127.0.0.1` in
    production.
 3. Store the widget secret as a Worker secret, without putting its value in a
    command argument or file committed to Git:
