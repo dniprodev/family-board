@@ -37,6 +37,11 @@ frontend and Worker together, with a local D1 simulation for `DB`:
 npm run dev
 ```
 
+Local development uses Cloudflare's Turnstile test key from the ignored
+`.dev.vars` file, with `localhost` and `127.0.0.1` allowed. Production
+Turnstile settings remain in `wrangler.jsonc` and must not include local
+hostnames.
+
 The application and Worker API are available at the local URL printed by Vite.
 The foundation health endpoint is `GET /api/health`.
 
@@ -48,21 +53,23 @@ phone-friendly editor, or share the Read link for read-only access.
 The application boundary for this slice is:
 
 - `POST /api/pages` creates a Page and returns `readLink` and `editLink`.
-- `GET /api/read/:token` returns the Page's Link items with `access: "read"`.
+- `GET /api/read/:token` returns the Page's newest-first Link items with
+  `createdAt` metadata and `access: "read"`.
 - `GET /api/edit/:token` validates the separate Edit link and returns the Page
   with `access: "edit"`.
 - `POST /api/edit/:token/rotate` replaces a valid Edit link and returns its new
   Edit link; the Read link remains valid.
-- `POST /api/edit/:token/items` creates a Link item from a title and absolute
-  HTTP(S) destination URL.
+- `POST /api/edit/:token/items` creates a Link item from an optional title and
+  an absolute HTTP(S) destination URL, placing it at the top of the Page.
 - `PATCH /api/edit/:token/items/:id` updates a Link item's title and/or
   destination URL.
 - `DELETE /api/edit/:token/items/:id` removes a Link item.
 - `PATCH /api/edit/:token/items/reorder` accepts the complete ordered list of
   Link item IDs.
 
-The Edit view keeps drafts local until they contain a title and valid
-destination URL, then autosaves changes after a short debounce. It shows
+The Edit view keeps drafts local until they contain a valid destination URL,
+then autosaves changes after a short debounce. An empty title is displayed as
+the Link URL. It shows
 Saving, Saved, and Save failed states; failed requests keep the current local
 form state available for retry. Read-link requests cannot use the item
 mutation endpoints. The retry action resubmits the latest failed request

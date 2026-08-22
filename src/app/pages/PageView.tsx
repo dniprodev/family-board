@@ -21,7 +21,7 @@ type SaveEntry = {
 };
 
 function isSavable(item: { title: string; destinationUrl: string }) {
-  if (!item.title.trim() || !item.destinationUrl.trim()) {
+  if (!item.destinationUrl.trim()) {
     return false;
   }
 
@@ -31,6 +31,21 @@ function isSavable(item: { title: string; destinationUrl: string }) {
   } catch {
     return false;
   }
+}
+
+function formatCreatedAt(createdAt: string) {
+  const date = new Date(
+    createdAt.includes(" ") ? `${createdAt.replace(" ", "T")}Z` : createdAt,
+  );
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
 }
 
 export function PageView({ access, token }: PageViewProps) {
@@ -275,7 +290,12 @@ export function PageView({ access, token }: PageViewProps) {
             ...currentPage,
             linkItems: currentPage.linkItems.map((candidate) =>
               candidate.id === itemId
-                ? { ...candidate, id: result.linkItem.id }
+                ? {
+                    ...candidate,
+                    id: result.linkItem.id,
+                    position: result.linkItem.position,
+                    createdAt: result.linkItem.createdAt,
+                  }
                 : candidate,
             ),
           };
@@ -356,13 +376,14 @@ export function PageView({ access, token }: PageViewProps) {
     setPage({
       ...page,
       linkItems: [
-        ...page.linkItems,
         {
           id: `draft-${crypto.randomUUID()}`,
           title: "",
           destinationUrl: "",
-          position: page.linkItems.length,
+          position: 0,
+          createdAt: "",
         },
+        ...page.linkItems,
       ],
     });
   }
@@ -516,31 +537,6 @@ export function PageView({ access, token }: PageViewProps) {
           <p className="eyebrow">{access === "read" ? "Read link" : "Edit link"}</p>
           <h1 className="page-title">Family Board</h1>
 
-          <section className="launch-page-panel" aria-label="App launch Page">
-            <div>
-              <h2 className="editor-panel-title">App launch Page</h2>
-              <p className="editor-panel-description">
-                Save this Page on this device and open it when Family Board starts.
-              </p>
-            </div>
-            <button
-              className="secondary-button"
-              onClick={() => {
-                if (isSavedLaunchPage) {
-                  clearSavedLaunchPage();
-                  setIsSavedLaunchPage(false);
-                  return;
-                }
-
-                saveLaunchPage(window.location.pathname);
-                setIsSavedLaunchPage(true);
-              }}
-              type="button"
-            >
-              {isSavedLaunchPage ? "Clear saved Page" : "Use this Page on launch"}
-            </button>
-          </section>
-
           {!page && !failed && <p className="loading-message">Loading Page…</p>}
 
           {failed && (
@@ -577,68 +573,45 @@ export function PageView({ access, token }: PageViewProps) {
                 </div>
               )}
 
+              <button className="secondary-button" onClick={addDraft} type="button">
+                Add Link item
+              </button>
+
               {page.linkItems.length === 0 && (
-                <p className="editor-empty-message">Add your first Link item below.</p>
+                <p className="editor-empty-message">Add your first Link item above.</p>
               )}
 
               <div className="editor-item-list">
                 {page.linkItems.map((item, index) => (
                   <article className="editor-item" key={item.id}>
-                    <div className="editor-item-heading">
-                      <span className="editor-item-number">{index + 1}</span>
-                      <div className="editor-item-actions">
-                        <button aria-label={`Move item ${index + 1} up`} disabled={index === 0} onClick={() => moveItem(item.id, -1)} type="button">↑</button>
-                        <button aria-label={`Move item ${index + 1} down`} disabled={index === page.linkItems.length - 1} onClick={() => moveItem(item.id, 1)} type="button">↓</button>
-                        <button aria-label={`Delete item ${index + 1}`} onClick={() => deleteItem(item.id)} type="button">Delete</button>
+                    {item.createdAt && (
+                      <div className="editor-item-heading">
+                        <time className="link-item-added" dateTime={item.createdAt}>
+                          Added {formatCreatedAt(item.createdAt)}
+                        </time>
                       </div>
-                    </div>
+                    )}
                     <label className="editor-field">
-                      <span>Title</span>
-                      <input onChange={(event) => updateItem(item.id, "title", event.target.value)} value={item.title} />
-                    </label>
-                    <label className="editor-field">
-                      <span>Destination URL</span>
+                      <span>Link</span>
                       <input onChange={(event) => updateItem(item.id, "destinationUrl", event.target.value)} placeholder="https://example.com" type="url" value={item.destinationUrl} />
                     </label>
+                    <label className="editor-field">
+                      <span>Title (optional)</span>
+                      <input onChange={(event) => updateItem(item.id, "title", event.target.value)} value={item.title} />
+                    </label>
+                    <div className="editor-item-actions" aria-label={`Actions for Link item ${index + 1}`}>
+                      <button aria-label={`Move Link item ${index + 1} up`} disabled={index === 0} onClick={() => moveItem(item.id, -1)} title="Move up" type="button">↑</button>
+                      <button aria-label={`Move Link item ${index + 1} down`} disabled={index === page.linkItems.length - 1} onClick={() => moveItem(item.id, 1)} title="Move down" type="button">↓</button>
+                      <button aria-label={`Delete Link item ${index + 1}`} className="delete-button" onClick={() => deleteItem(item.id)} title="Delete" type="button">
+                        <svg aria-hidden="true" viewBox="0 0 24 24">
+                          <path d="M5 7h14m-9 4v6m4-6v6M9 7V5h6v2m-8 0 1 13h8l1-13" />
+                        </svg>
+                      </button>
+                    </div>
                   </article>
                 ))}
               </div>
 
-              <button className="secondary-button" onClick={addDraft} type="button">
-                Add Link item
-              </button>
-
-              <section className="editor-access-panel" aria-label="Edit link access">
-                <div>
-                  <h2 className="editor-panel-title">Edit link access</h2>
-                  <p className="editor-panel-description">
-                    Rotate the Edit link if you no longer want the current link to
-                    grant access.
-                  </p>
-                </div>
-                <button
-                  className="secondary-button"
-                  disabled={rotationState === "rotating"}
-                  onClick={() => void rotateEditLink()}
-                  type="button"
-                >
-                  {rotationState === "rotating" ? "Rotating…" : "Rotate Edit link"}
-                </button>
-                {rotationState === "error" && (
-                  <div className="error-panel" role="alert">
-                    The Edit link could not be rotated. Check your connection and
-                    try again.
-                  </div>
-                )}
-                {rotatedEditLink && (
-                  <div className="editor-access-result">
-                    <p className="editor-panel-description">
-                      Save this new Edit link. The previous link no longer works.
-                    </p>
-                    <LinkRow label="New Edit link" link={rotatedEditLink} />
-                  </div>
-                )}
-              </section>
             </section>
           )}
 
@@ -663,13 +636,79 @@ export function PageView({ access, token }: PageViewProps) {
                     rel="noreferrer"
                     target="_blank"
                   >
-                    {item.title}
+                    <span className="page-item-title">
+                      {item.title || item.destinationUrl}
+                    </span>
+                    <time className="link-item-added" dateTime={item.createdAt}>
+                      Added {formatCreatedAt(item.createdAt)}
+                    </time>
                   </a>
                 </li>
               ))}
             </ul>
           )}
         </section>
+
+        <footer className="site-footer page-footer">
+          <section className="footer-option" aria-label="App launch Page">
+            <div>
+              <h2 className="editor-panel-title">App launch Page</h2>
+              <p className="editor-panel-description">
+                Save this Page on this device and open it when Family Board starts.
+              </p>
+            </div>
+            <button
+              className="secondary-button"
+              onClick={() => {
+                if (isSavedLaunchPage) {
+                  clearSavedLaunchPage();
+                  setIsSavedLaunchPage(false);
+                  return;
+                }
+
+                saveLaunchPage(window.location.pathname);
+                setIsSavedLaunchPage(true);
+              }}
+              type="button"
+            >
+              {isSavedLaunchPage ? "Clear saved Page" : "Use this Page on launch"}
+            </button>
+          </section>
+
+          {access === "edit" && (
+            <section className="footer-option" aria-label="Edit link access">
+              <div>
+                <h2 className="editor-panel-title">Edit link access</h2>
+                <p className="editor-panel-description">
+                  Rotate the Edit link if you no longer want the current link to
+                  grant access.
+                </p>
+              </div>
+              <button
+                className="secondary-button"
+                disabled={rotationState === "rotating"}
+                onClick={() => void rotateEditLink()}
+                type="button"
+              >
+                {rotationState === "rotating" ? "Rotating…" : "Rotate Edit link"}
+              </button>
+              {rotationState === "error" && (
+                <div className="error-panel" role="alert">
+                  The Edit link could not be rotated. Check your connection and
+                  try again.
+                </div>
+              )}
+              {rotatedEditLink && (
+                <div className="editor-access-result">
+                  <p className="editor-panel-description">
+                    Save this new Edit link. The previous link no longer works.
+                  </p>
+                  <LinkRow label="New Edit link" link={rotatedEditLink} />
+                </div>
+              )}
+            </section>
+          )}
+        </footer>
       </div>
     </main>
   );

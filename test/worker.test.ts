@@ -317,6 +317,17 @@ describe("application boundary", () => {
     const firstItem = (await firstCreate.json()).linkItem;
     const secondItem = (await secondCreate.json()).linkItem;
 
+    expect(firstItem.createdAt).toEqual(expect.any(String));
+    expect(secondItem.createdAt).toEqual(expect.any(String));
+    expect(secondItem.position).toBe(0);
+    expect(firstItem.position).toBe(0);
+
+    const newestFirst = await request(`/api/edit/${editToken}`);
+    expect((await newestFirst.json()).linkItems).toMatchObject([
+      { id: secondItem.id, position: 0 },
+      { id: firstItem.id, position: 1 },
+    ]);
+
     const update = await request(
       `/api/edit/${editToken}/items/${firstItem.id}`,
       {
@@ -366,6 +377,25 @@ describe("application boundary", () => {
     expect((await edit.json()).linkItems).toHaveLength(1);
   });
 
+  it("allows a Link item to use its URL as its display title", async () => {
+    const links = await createPage();
+    const editToken = new URL(links.editLink).pathname.split("/").pop();
+    const response = await request(`/api/edit/${editToken}/items`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        title: "",
+        destinationUrl: "https://example.com/no-title",
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    expect((await response.json()).linkItem).toMatchObject({
+      title: "",
+      destinationUrl: "https://example.com/no-title",
+    });
+  });
+
   it("rejects invalid Link items and keeps the Read link read-only", async () => {
     const links = await createPage();
     const editToken = new URL(links.editLink).pathname.split("/").pop();
@@ -386,7 +416,7 @@ describe("application boundary", () => {
 
     expect(invalid.status).toBe(400);
     expect(await invalid.json()).toEqual({
-      error: "Link item title and destination URL are required",
+      error: "Link item destination URL is required",
     });
     expect(readMutation.status).toBe(404);
   });

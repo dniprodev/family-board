@@ -1,4 +1,6 @@
-type WorkerEnv = Cloudflare.Env & { ASSETS: Fetcher };
+type WorkerEnv = Cloudflare.Env & {
+  ASSETS: Fetcher;
+};
 
 type Access = "read" | "edit";
 
@@ -7,6 +9,7 @@ type LinkItem = {
   title: string;
   destinationUrl: string;
   position: number;
+  createdAt: string;
 };
 
 const jsonHeaders = {
@@ -25,7 +28,7 @@ const readPagePath = /^\/read(?:\/|$)/;
 const bearerPagePath = /^\/(?:read|edit)(?:\/|$)/;
 const turnstileSiteverifyUrl =
   "https://challenges.cloudflare.com/turnstile/v0/siteverify";
-const turnstileAction = "create-page";
+const defaultTurnstileAction = "create-page";
 
 const tokenEncoder = new TextEncoder();
 
@@ -89,6 +92,10 @@ function configuredHostnames(env: WorkerEnv) {
 async function verifyTurnstile(request: Request, env: WorkerEnv) {
   const token = request.headers.get("cf-turnstile-response");
   const expectedHostnames = configuredHostnames(env);
+  const requestHostname = new URL(request.url).hostname;
+  const testMode =
+    String(env.TURNSTILE_SITE_KEY) === "1x00000000000000000000AA" &&
+    new Set(["localhost", "127.0.0.1", "0.0.0.0"]).has(requestHostname);
 
   if (
     !env.TURNSTILE_SECRET ||
@@ -129,9 +136,10 @@ async function verifyTurnstile(request: Request, env: WorkerEnv) {
 
     return (
       result.success === true &&
-      result.action === turnstileAction &&
-      typeof result.hostname === "string" &&
-      expectedHostnames.has(result.hostname.toLowerCase())
+      (testMode ||
+        (result.action === defaultTurnstileAction &&
+          typeof result.hostname === "string" &&
+          expectedHostnames.has(result.hostname.toLowerCase())))
     );
   } catch {
     return false;
@@ -238,10 +246,11 @@ async function getPage(request: Request, env: WorkerEnv, access: Access, token: 
   }
 
   const items = await env.DB.prepare(
-    `SELECT id, title, destination_url AS destinationUrl, position
+    `SELECT id, title, destination_url AS destinationUrl, position,
+            created_at AS createdAt
      FROM link_items
      WHERE page_id = ?1
-     ORDER BY position ASC, created_at ASC`,
+     ORDER BY position ASC, created_at DESC, id DESC`,
   )
     .bind(pageId)
     .all<LinkItem>();
@@ -282,7 +291,7 @@ function validateLinkItem(title: unknown, destinationUrl: unknown) {
   const trimmedTitle = title.trim();
   const trimmedUrl = destinationUrl.trim();
 
-  if (!trimmedTitle || !trimmedUrl) {
+  if (!trimmedUrl) {
     return null;
   }
 
@@ -309,7 +318,7 @@ async function parseJson(request: Request) {
 
 function invalidLinkItemResponse() {
   return jsonResponse(
-    { error: "Link item title and destination URL are required" },
+    { error: "Link item destination URL is required" },
     400,
   );
 }
@@ -331,29 +340,31 @@ async function createLinkItem(request: Request, env: WorkerEnv, token: string) {
     return invalidLinkItemResponse();
   }
 
-  const position = await env.DB.prepare(
-    "SELECT COALESCE(MAX(position) + 1, 0) AS position FROM link_items WHERE page_id = ?1",
-  )
-    .bind(pageId)
-    .first<{ position: number }>();
+  const createdAt = new Date().toISOString();
   const linkItem: LinkItem = {
     id: crypto.randomUUID(),
     ...input,
-    position: position?.position ?? 0,
+    position: 0,
+    createdAt,
   };
 
-  await env.DB.prepare(
-    `INSERT INTO link_items (id, page_id, title, destination_url, position)
-     VALUES (?1, ?2, ?3, ?4, ?5)`,
-  )
-    .bind(
+  await env.DB.batch([
+    env.DB.prepare(
+      "UPDATE link_items SET position = position + 1 WHERE page_id = ?1",
+    ).bind(pageId),
+    env.DB.prepare(
+      `INSERT INTO link_items
+       (id, page_id, title, destination_url, position, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6)`,
+    ).bind(
       linkItem.id,
       pageId,
       linkItem.title,
       linkItem.destinationUrl,
       linkItem.position,
-    )
-    .run();
+      linkItem.createdAt,
+    ),
+  ]);
 
   return jsonResponse({ linkItem }, 201);
 }
@@ -371,7 +382,8 @@ async function updateLinkItem(
   }
 
   const currentItem = await env.DB.prepare(
-    `SELECT id, title, destination_url AS destinationUrl, position
+    `SELECT id, title, destination_url AS destinationUrl, position,
+            created_at AS createdAt
      FROM link_items WHERE id = ?1 AND page_id = ?2`,
   )
     .bind(itemId, pageId)
@@ -451,7 +463,7 @@ async function reorderLinkItems(request: Request, env: WorkerEnv, token: string)
   }
 
   const currentItems = await env.DB.prepare(
-    "SELECT id FROM link_items WHERE page_id = ?1 ORDER BY position ASC, created_at ASC",
+    "SELECT id FROM link_items WHERE page_id = ?1 ORDER BY position ASC, created_at DESC, id DESC",
   )
     .bind(pageId)
     .all<{ id: string }>();

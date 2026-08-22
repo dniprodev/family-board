@@ -8,6 +8,7 @@ export type LinkItem = {
   title: string;
   destinationUrl: string;
   position: number;
+  createdAt: string;
 };
 
 export type PageResponse = {
